@@ -21,7 +21,8 @@ for _ in $(seq 1 50); do
   if curl -fsS "http://127.0.0.1:$PORT/health" >/dev/null 2>&1; then break; fi
   sleep 0.1
 done
-VIPI_FIXTURE_TOKEN="$TOKEN" VIPI_PORT=$PORT node --import tsx host/test/fixture-runtime.ts >"$STATE/runtime.log" 2>&1 &
+PI_CODING_AGENT_DIR="$STATE" VIPI_BROKER_URL="ws://127.0.0.1:$PORT/ws" \
+  node --import tsx host/test/fixture-runtime.ts >"$STATE/runtime.log" 2>&1 &
 RUNTIME_PID=$!
 sleep 0.5
 DESTINATION=${VIPI_TEST_DESTINATION:-platform=iOS Simulator,name=Vipi iPhone}

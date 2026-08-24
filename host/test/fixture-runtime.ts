@@ -1,38 +1,60 @@
-import WebSocket from "ws";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import vipiBridge from "../../extension/index.js";
 
-const token = process.env.VIPI_FIXTURE_TOKEN;
-const port = process.env.VIPI_PORT ?? "8765";
-if (!token) throw new Error("VIPI_FIXTURE_TOKEN is required");
-const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`);
-const envelope = (type: string, payload: unknown) => JSON.stringify({ type, protocolVersion: 1, payload });
-const session = {
-  id: "e2e", name: "E2E / Live session", cwd: "/tmp/vipi-e2e", phase: "idle", unread: false,
-  lastActivityAt: new Date().toISOString(), model: "Fixture", thinkingLevel: "medium", contextPercent: 12,
-  tmux: { session: "vipi-e2e", window: "1", paneID: "%99" },
-};
-socket.on("open", () => socket.send(envelope("runtime.register", { token, session })));
-socket.on("message", (raw) => {
-  const message = JSON.parse(raw.toString()) as { id?: string; type: string; payload?: Record<string, unknown> };
-  const respond = (result?: unknown) => socket.send(envelope("runtime.response", { requestID: message.id, ok: true, result }));
-  if (message.type === "session.history") {
-    respond({ events: [{
-      kind: "message", messageID: "history-1", role: "assistant", text: "History restored",
-      timestamp: new Date().toISOString(), streaming: false, entryID: "entry-1",
-    }], lastEntryID: "entry-1" });
-  } else if (message.type === "session.prompt") {
-    respond();
-    socket.send(envelope("runtime.event", { sessionID: "e2e", event: {
-      kind: "message", messageID: "live-1", role: "assistant", text: "Streaming",
-      timestamp: new Date().toISOString(), streaming: true,
-    } }));
-    socket.send(envelope("runtime.event", { sessionID: "e2e", event: {
-      kind: "tool", toolCallID: "tool-e2e", name: "read", state: "succeeded", summary: "read completed",
-    } }));
-    socket.send(envelope("runtime.event", { sessionID: "e2e", event: {
-      kind: "message", messageID: "live-1", role: "assistant", text: "Streaming complete",
-      timestamp: new Date().toISOString(), streaming: false,
-    } }));
-  } else if (message.type === "session.abort") {
-    respond({ aborted: true });
-  }
+const handlers = new Map<string, (event: any, context: ExtensionContext) => Promise<void>>();
+let phase = "idle";
+let nextEntry = 2;
+const branch: any[] = [{
+  id: "entry-1", parentId: null, timestamp: new Date().toISOString(), type: "message",
+  message: { role: "assistant", content: [{ type: "text", text: "History restored" }], timestamp: Date.now() - 1_000 },
+}];
+
+const context = {
+  cwd: "/tmp/vipi-e2e",
+  model: { id: "fixture", name: "Fixture" },
+  sessionManager: {
+    getSessionId: () => "e2e",
+    getSessionFile: () => "/tmp/vipi-e2e.jsonl",
+    getBranch: () => branch,
+  },
+  getContextUsage: () => ({ percent: 12 }),
+  abort: () => {},
+  compact: () => {},
+} as unknown as ExtensionContext;
+
+async function produceSettledTurn(): Promise<void> {
+  phase = "working";
+  await handlers.get("agent_start")?.({ type: "agent_start" }, context);
+  const message: any = { role: "assistant", content: [{ type: "text", text: "Streaming" }], timestamp: Date.now() };
+  await handlers.get("message_start")?.({ type: "message_start", message }, context);
+  await handlers.get("message_update")?.({ type: "message_update", message, assistantMessageEvent: { type: "text_delta", delta: "Streaming" } }, context);
+  await handlers.get("tool_execution_end")?.({ type: "tool_execution_end", toolCallId: "tool-e2e", toolName: "read", result: "ok", isError: false }, context);
+  message.content = [
+    { type: "text", text: "Streaming complete" },
+    { type: "toolCall", id: "tool-e2e", name: "read", arguments: { path: "README.md" } },
+  ];
+  const messageEntryID = `entry-${nextEntry++}`;
+  branch.push({ id: messageEntryID, parentId: branch.at(-1)?.id ?? null, timestamp: new Date().toISOString(), type: "message", message });
+  await handlers.get("message_end")?.({ type: "message_end", message }, context);
+  branch.push({
+    id: `entry-${nextEntry++}`, parentId: messageEntryID, timestamp: new Date().toISOString(), type: "message",
+    message: { role: "toolResult", toolCallId: "tool-e2e", toolName: "read", content: [{ type: "text", text: "ok" }], isError: false, timestamp: Date.now() },
+  });
+  phase = "completed";
+  await handlers.get("agent_settled")?.({ type: "agent_settled" }, context);
+}
+
+const api = {
+  on: (name: string, handler: (event: any, ctx: ExtensionContext) => Promise<void>) => { handlers.set(name, handler); },
+  getSessionName: () => "E2E / Live session",
+  getThinkingLevel: () => "medium",
+  sendUserMessage: () => { setTimeout(() => void produceSettledTurn(), 10); },
+} as unknown as ExtensionAPI;
+
+vipiBridge(api);
+await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, context);
+
+process.on("SIGTERM", async () => {
+  await handlers.get("session_shutdown")?.({ type: "session_shutdown", reason: "quit" }, context);
+  process.exit(0);
 });

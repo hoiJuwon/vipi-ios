@@ -52,6 +52,13 @@ final class VipiUITests: XCTestCase {
         app.buttons["chat.send"].tap()
         XCTAssertTrue(app.staticTexts["Streaming complete"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["read completed"].waitForExistence(timeout: 5))
+        let completedStatus = app.otherElements.matching(
+            NSPredicate(format: "label == %@ AND value == %@", "Session status", "Completed")
+        ).firstMatch
+        XCTAssertTrue(completedStatus.waitForExistence(timeout: 10))
+        Thread.sleep(forTimeInterval: 1)
+        XCTAssertEqual(app.staticTexts.matching(NSPredicate(format: "label == %@", "Streaming complete")).count, 1)
+        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label == %@", "Tool read")).count, 1)
         app.buttons["chat.menu"].tap()
         let abort = app.buttons["chat.abort"]
         XCTAssertTrue(abort.waitForExistence(timeout: 3))
