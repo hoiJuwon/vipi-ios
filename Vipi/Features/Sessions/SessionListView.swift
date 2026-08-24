@@ -11,6 +11,14 @@ struct SessionListView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 22) {
                     hero
+                    if filteredGroups.isEmpty {
+                        ContentUnavailableView(
+                            "No paired sessions",
+                            systemImage: "lock.shield",
+                            description: Text("Open Settings to pair your Tailscale host, or explicitly choose demo data.")
+                        )
+                        .accessibilityIdentifier("sessions.empty")
+                    }
                     ForEach(filteredGroups) { group in
                         workspaceSection(group)
                     }

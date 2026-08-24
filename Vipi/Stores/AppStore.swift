@@ -5,23 +5,29 @@ import Observation
 final class AppStore {
     enum ConnectionState: Equatable { case demo, connecting, connected, disconnected(String?) }
 
-    var sessions: [RemoteSession] = MockData.sessions
-    var messagesBySession: [String: [ChatMessage]] = MockData.messages
-    var branchesBySession: [String: [BranchNode]] = MockData.branches
-    var connectionState: ConnectionState = .demo
-    var host = "https://mac-studio.tail0f97ca.ts.net"
+    var sessions: [RemoteSession] = []
+    var messagesBySession: [String: [ChatMessage]] = [:]
+    var branchesBySession: [String: [BranchNode]] = [:]
+    var connectionState: ConnectionState = .disconnected(nil)
+    var host = ""
     var token = ""
     var selectedSessionID: String?
     var showingSettings = false
-    var activityItems = MockData.activity
+    var activityItems: [ActivityItem] = []
     var commandError: String?
 
     private let broker: BrokerClient
+    private let allowsInsecureLocalhostForUITesting: Bool
     private var lastEntryBySession: [String: String] = [:]
     private var pendingHistoryRequests: [String: String] = [:]
 
-    init(broker: BrokerClient = BrokerClient()) {
+    init(
+        broker: BrokerClient = BrokerClient(),
+        allowsInsecureLocalhostForUITesting: Bool = false,
+        startsInDemoMode: Bool = false
+    ) {
         self.broker = broker
+        self.allowsInsecureLocalhostForUITesting = allowsInsecureLocalhostForUITesting
         if CommandLine.arguments.contains("--uitesting"),
            let fixture = ProcessInfo.processInfo.environment["VIPI_E2E_PAIRING"],
            let data = fixture.data(using: .utf8),
@@ -32,6 +38,7 @@ final class AppStore {
             token = KeychainStore.loadToken() ?? ""
             host = UserDefaults.standard.string(forKey: "vipi.host") ?? ""
         }
+        if startsInDemoMode { loadDemoData() }
     }
 
     var workspaceGroups: [WorkspaceGroup] {
@@ -66,22 +73,31 @@ final class AppStore {
 
     func useDemoMode() {
         Task { await broker.disconnect() }
+        loadDemoData()
+    }
+
+    private func loadDemoData() {
         sessions = MockData.sessions
         messagesBySession = MockData.messages
+        branchesBySession = MockData.branches
+        activityItems = MockData.activity
         connectionState = .demo
     }
 
     func pair(payload: String) throws {
         guard let data = payload.data(using: .utf8) else { throw PairingError.invalidPayload }
         let pairing = try JSONDecoder().decode(PairingPayload.self, from: data)
-        guard let components = URLComponents(string: pairing.host),
-              let hostname = components.host?.lowercased(),
-              (components.scheme == "https" && hostname.hasSuffix(".ts.net")) ||
-                (components.scheme == "http" && hostname == "127.0.0.1"),
-              components.user == nil, components.password == nil,
-              components.query == nil, components.fragment == nil,
-              pairing.token.count >= 32 else { throw PairingError.invalidPayload }
-        host = pairing.host
+        guard pairing.token.count >= 32 else { throw PairingError.invalidPayload }
+        let endpoint: TailscaleEndpoint
+        do {
+            endpoint = try TailscaleEndpoint.parse(
+                pairing.host,
+                allowsInsecureLocalhostForUITesting: allowsInsecureLocalhostForUITesting
+            )
+        } catch {
+            throw PairingError.invalidPayload
+        }
+        host = endpoint.publicURL.absoluteString
         token = pairing.token
         UserDefaults.standard.set(host, forKey: "vipi.host")
         try KeychainStore.saveToken(token)
@@ -98,15 +114,20 @@ final class AppStore {
 
     func send(text: String, to sessionID: String, delivery: PromptDelivery) async {
         let message = ChatMessage(id: UUID().uuidString, role: .user, text: text, timestamp: .now)
-        messagesBySession[sessionID, default: []].append(message)
-        if connectionState == .connected {
-            do {
-                _ = try await broker.send(type: "session.prompt", payload: PromptPayload(sessionID: sessionID, text: text, delivery: delivery))
-            } catch {
-                commandError = "Prompt could not be delivered: \(error.localizedDescription)"
-            }
-        } else {
+        if connectionState == .demo {
+            messagesBySession[sessionID, default: []].append(message)
             simulateReply(sessionID: sessionID)
+            return
+        }
+        guard connectionState == .connected else {
+            commandError = "The prompt was not sent because the host is disconnected."
+            return
+        }
+        do {
+            _ = try await broker.send(type: "session.prompt", payload: PromptPayload(sessionID: sessionID, text: text, delivery: delivery))
+            messagesBySession[sessionID, default: []].append(message)
+        } catch {
+            commandError = "Prompt could not be delivered: \(error.localizedDescription)"
         }
     }
 

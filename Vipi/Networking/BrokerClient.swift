@@ -10,10 +10,16 @@ actor BrokerClient {
     private var credentials: (host: String, token: String)?
     private var lastSeq: Int?
     private var shouldReconnect = false
+    private let allowsInsecureLocalhostForUITesting: Bool
     private(set) var state: State = .disconnected
     var onEnvelope: (@Sendable (ServerEnvelope) async -> Void)?
 
-    init(reconnectHost: String? = nil, token: String? = nil) {
+    init(
+        reconnectHost: String? = nil,
+        token: String? = nil,
+        allowsInsecureLocalhostForUITesting: Bool = false
+    ) {
+        self.allowsInsecureLocalhostForUITesting = allowsInsecureLocalhostForUITesting
         if let reconnectHost, let token { credentials = (reconnectHost, token) }
     }
 
@@ -26,13 +32,18 @@ actor BrokerClient {
 
     private func open(host: String, token: String) async throws {
         state = .connecting
-        guard var components = URLComponents(string: host) else { throw ClientError.invalidURL }
-        if components.scheme == "https" { components.scheme = "wss" }
-        if components.scheme == "http" { components.scheme = "ws" }
-        components.path = "/ws"
-        guard let url = components.url else { throw ClientError.invalidURL }
+        let endpoint: TailscaleEndpoint
+        do {
+            endpoint = try TailscaleEndpoint.parse(
+                host,
+                allowsInsecureLocalhostForUITesting: allowsInsecureLocalhostForUITesting
+            )
+        } catch {
+            state = .disconnected
+            throw error
+        }
 
-        let task = URLSession.shared.webSocketTask(with: url)
+        let task = URLSession.shared.webSocketTask(with: endpoint.webSocketURL)
         socket = task
         task.resume()
         try await send(type: "auth.authenticate", payload: AuthenticatePayload(token: token, lastSeq: lastSeq))

@@ -27,6 +27,7 @@
 		DF80DAD8993074D107CA81D9 /* SessionSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEC9C0D7E27AADAE735504FE /* SessionSheets.swift */; };
 		E7E8A8E073144AEA79E07D36 /* BrokerClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A812CC5591D5944635F89BEA /* BrokerClient.swift */; };
 		E80C9737E6A7F103F93A11B4 /* WireProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C2627C2C6A76D4D798CDE4F /* WireProtocol.swift */; };
+		F61E520B85843948B3435E2D /* TailscaleEndpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEBD7F4AC8A326F807D26CC6 /* TailscaleEndpoint.swift */; };
 		FFC67D0B2CBD7B285D0A7A1D /* VipiTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEA45577862E5D8092E1F11A /* VipiTheme.swift */; };
 /* End PBXBuildFile section */
 
@@ -71,6 +72,7 @@
 		D3FD97EC8475EDE216CB59E0 /* ActivityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityView.swift; sourceTree = "<group>"; };
 		E4C3A37166A3EAB55DEA70D3 /* SessionListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionListView.swift; sourceTree = "<group>"; };
 		EAEF1AF53B3ECC6C955E5219 /* VipiUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VipiUITests.swift; sourceTree = "<group>"; };
+		EEBD7F4AC8A326F807D26CC6 /* TailscaleEndpoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TailscaleEndpoint.swift; sourceTree = "<group>"; };
 		EEC9C0D7E27AADAE735504FE /* SessionSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionSheets.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -88,6 +90,7 @@
 			isa = PBXGroup;
 			children = (
 				A812CC5591D5944635F89BEA /* BrokerClient.swift */,
+				EEBD7F4AC8A326F807D26CC6 /* TailscaleEndpoint.swift */,
 				9C2627C2C6A76D4D798CDE4F /* WireProtocol.swift */,
 			);
 			path = Networking;
@@ -371,6 +374,7 @@
 				DF80DAD8993074D107CA81D9 /* SessionSheets.swift in Sources */,
 				8613E2C6CFC95A65A2F7501B /* SettingsView.swift in Sources */,
 				568FD418BC3F3A8E3D82DEFE /* StatusPill.swift in Sources */,
+				F61E520B85843948B3435E2D /* TailscaleEndpoint.swift in Sources */,
 				414A19E6F40D0DD5740CEF81 /* VipiApp.swift in Sources */,
 				FFC67D0B2CBD7B285D0A7A1D /* VipiTheme.swift in Sources */,
 				E80C9737E6A7F103F93A11B4 /* WireProtocol.swift in Sources */,

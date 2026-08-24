@@ -3,7 +3,7 @@ import XCTest
 
 final class SessionModelTests: XCTestCase {
     func testWorkspaceGroupingKeepsWorkingWorkspaceFirst() async {
-        let store = await AppStore()
+        let store = await AppStore(startsInDemoMode: true)
         let groups = await store.workspaceGroups
         XCTAssertFalse(groups.isEmpty)
         XCTAssertTrue(groups[0].sessions.contains { $0.phase == .working })
@@ -31,8 +31,19 @@ final class SessionModelTests: XCTestCase {
         XCTAssertEqual(store.messages(for: "wire")[0].tools.first?.state, .succeeded)
     }
 
+    @MainActor func testProductionStoreStartsEmptyAndDisconnected() {
+        let store = AppStore()
+        XCTAssertTrue(store.sessions.isEmpty)
+        XCTAssertTrue(store.messagesBySession.isEmpty)
+        XCTAssertEqual(store.connectionState, .disconnected(nil))
+    }
+
     @MainActor func testDisconnectedCommandsSurfaceErrors() async {
         let store = AppStore()
+        await store.send(text: "must not be fabricated", to: "mobile", delivery: .prompt)
+        XCTAssertTrue(store.messages(for: "mobile").isEmpty)
+        XCTAssertEqual(store.commandError, "The prompt was not sent because the host is disconnected.")
+        store.commandError = nil
         await store.abort(sessionID: "mobile")
         XCTAssertNotNil(store.commandError)
         store.commandError = nil
@@ -57,6 +68,21 @@ final class SessionModelTests: XCTestCase {
         XCTAssertEqual(store.token, rotated)
         let reconnectToken = await broker.reconnectTokenForTesting()
         XCTAssertEqual(reconnectToken, rotated)
+    }
+
+    func testProductionEndpointPolicyRequiresTailnetHTTPS() throws {
+        let endpoint = try TailscaleEndpoint.parse("https://mac.example-tailnet.ts.net")
+        XCTAssertEqual(endpoint.webSocketURL.absoluteString, "wss://mac.example-tailnet.ts.net/ws")
+        XCTAssertThrowsError(try TailscaleEndpoint.parse("http://127.0.0.1:9876"))
+        XCTAssertThrowsError(try TailscaleEndpoint.parse("https://public.example.com"))
+        XCTAssertThrowsError(try TailscaleEndpoint.parse("https://mac.example-tailnet.ts.net/path"))
+        XCTAssertEqual(
+            try TailscaleEndpoint.parse(
+                "http://127.0.0.1:9876",
+                allowsInsecureLocalhostForUITesting: true
+            ).webSocketURL.absoluteString,
+            "ws://127.0.0.1:9876/ws"
+        )
     }
 
     @MainActor func testSecurePairingPayloadAndKeychainRoundTrip() throws {
