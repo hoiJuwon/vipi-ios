@@ -6,7 +6,7 @@ struct SessionListView: View {
 
     var body: some View {
         ZStack {
-            VipiTheme.canvas.ignoresSafeArea()
+            VipiBackdrop()
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 22) {
                     hero
@@ -28,10 +28,17 @@ struct SessionListView: View {
                     Image(systemName: "circle.hexagongrid.fill").foregroundStyle(VipiTheme.accent)
                     ConnectionCapsule(state: store.connectionState)
                 }
+                .padding(.horizontal, 11)
+                .padding(.vertical, 7)
+                .vipiGlass(in: Capsule())
             }
             ToolbarItem(placement: .topBarTrailing) {
-                Button { } label: { Image(systemName: "plus") }
-                    .accessibilityLabel("New session")
+                Button { } label: {
+                    Image(systemName: "plus")
+                        .frame(width: 34, height: 34)
+                        .vipiGlass(interactive: true, in: Circle())
+                }
+                .accessibilityLabel("New session")
             }
         }
     }

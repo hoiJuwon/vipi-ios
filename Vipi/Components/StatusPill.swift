@@ -12,7 +12,7 @@ struct StatusPill: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .background(phase.color.opacity(0.12), in: Capsule())
+        .vipiGlass(tint: phase.color.opacity(0.18), in: Capsule())
     }
 }
 

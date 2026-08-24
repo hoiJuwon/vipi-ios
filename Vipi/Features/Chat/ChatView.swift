@@ -12,7 +12,7 @@ struct ChatView: View {
 
     var body: some View {
         ZStack {
-            VipiTheme.canvas.ignoresSafeArea()
+            VipiBackdrop()
             VStack(spacing: 0) {
                 if let session { SessionContextBar(session: session) }
                 transcript
@@ -36,7 +36,11 @@ struct ChatView: View {
                     Button("Stop current run", systemImage: "stop.circle", role: .destructive) {
                         Task { await store.abort(sessionID: sessionID) }
                     }
-                } label: { Image(systemName: "ellipsis.circle") }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .frame(width: 34, height: 34)
+                        .vipiGlass(interactive: true, in: Circle())
+                }
             }
         }
         .onAppear { store.markRead(sessionID) }
@@ -85,9 +89,10 @@ private struct SessionContextBar: View {
             Text("\(session.contextPercent)%").font(.caption2.monospacedDigit())
         }
         .foregroundStyle(VipiTheme.secondary)
-        .padding(.horizontal, 16).padding(.vertical, 9)
-        .background(.ultraThinMaterial)
-        .overlay(alignment: .bottom) { Divider().overlay(VipiTheme.stroke) }
+        .padding(.horizontal, 14).padding(.vertical, 9)
+        .vipiGlass(in: Capsule())
+        .padding(.horizontal, 12)
+        .padding(.top, 4)
     }
 }
 
@@ -99,7 +104,7 @@ private struct MessageView: View {
             HStack { Spacer(minLength: 44); Text(message.text)
                 .font(.body).foregroundStyle(.white)
                 .padding(.horizontal, 15).padding(.vertical, 11)
-                .background(VipiTheme.accent, in: RoundedRectangle(cornerRadius: 18, style: .continuous)) }
+                .vipiGlass(tint: VipiTheme.accent, in: RoundedRectangle(cornerRadius: 18, style: .continuous)) }
         } else {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 8) {
@@ -145,8 +150,8 @@ private struct ToolCard: View {
                 }
             }
             .padding(12)
-            .background(VipiTheme.elevated, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay { RoundedRectangle(cornerRadius: 14).stroke(VipiTheme.stroke) }
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay { RoundedRectangle(cornerRadius: 14).stroke(VipiTheme.stroke, lineWidth: 0.75) }
         }
         .buttonStyle(.plain)
     }

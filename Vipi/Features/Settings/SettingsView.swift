@@ -40,7 +40,7 @@ struct SettingsView: View {
             }
         }
         .scrollContentBackground(.hidden)
-        .background(VipiTheme.canvas)
+        .background { VipiBackdrop() }
         .navigationTitle("Settings")
     }
 }

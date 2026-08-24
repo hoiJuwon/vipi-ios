@@ -21,25 +21,27 @@ struct ComposerView: View {
             }
             HStack(alignment: .bottom, spacing: 10) {
                 Button { } label: {
-                    Image(systemName: "plus").frame(width: 34, height: 34)
-                        .background(VipiTheme.elevated, in: Circle())
+                    Image(systemName: "plus").frame(width: 36, height: 36)
+                        .vipiGlass(interactive: true, in: Circle())
                 }
                 .foregroundStyle(VipiTheme.primary)
                 TextField("Message Pi…", text: $draft, axis: .vertical)
                     .lineLimit(1...6)
-                    .padding(.horizontal, 14).padding(.vertical, 10)
-                    .background(VipiTheme.elevated, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .padding(.horizontal, 14).padding(.vertical, 11)
+                    .vipiGlass(interactive: true, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
                 Button { onSend(phase == .working ? selectedDelivery : .prompt) } label: {
                     Image(systemName: phase == .working && draft.isEmpty ? "stop.fill" : "arrow.up")
                         .font(.body.bold()).foregroundStyle(.white)
-                        .frame(width: 38, height: 38)
-                        .background(draft.isEmpty ? VipiTheme.secondary.opacity(0.4) : VipiTheme.accent, in: Circle())
+                        .frame(width: 40, height: 40)
+                        .vipiGlass(
+                            tint: draft.isEmpty ? VipiTheme.secondary.opacity(0.2) : VipiTheme.accent,
+                            interactive: true,
+                            in: Circle()
+                        )
                 }
                 .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
-        .padding(.horizontal, 12).padding(.top, 9).padding(.bottom, 8)
-        .background(.ultraThinMaterial)
-        .overlay(alignment: .top) { Divider().overlay(VipiTheme.stroke) }
+        .padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 8)
     }
 }

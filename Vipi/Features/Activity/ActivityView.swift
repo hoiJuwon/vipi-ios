@@ -5,7 +5,7 @@ struct ActivityView: View {
 
     var body: some View {
         ZStack {
-            VipiTheme.canvas.ignoresSafeArea()
+            VipiBackdrop()
             ScrollView {
                 LazyVStack(spacing: 12) {
                     ForEach(store.activityItems) { item in
