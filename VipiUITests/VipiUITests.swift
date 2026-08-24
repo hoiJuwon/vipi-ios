@@ -18,7 +18,7 @@ final class VipiUITests: XCTestCase {
         let session = app.buttons["session.mobile"]
         XCTAssertTrue(session.waitForExistence(timeout: 5))
         XCTAssertEqual(session.label, "개발 / 모바일 세션 앱")
-        XCTAssertTrue((session.value as? String)?.contains("응답을 생성하고 있어요") == true)
+        XCTAssertTrue((session.value as? String)?.contains("현재 앱 셸과 연결 프로토콜") == true)
         XCTAssertTrue(session.isHittable)
         session.tap()
 
@@ -52,10 +52,11 @@ final class VipiUITests: XCTestCase {
         app.buttons["chat.send"].tap()
         XCTAssertTrue(app.staticTexts["Streaming complete"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["read completed"].waitForExistence(timeout: 5))
-        let completedStatus = app.otherElements.matching(
-            NSPredicate(format: "label == %@ AND value == %@", "Session status", "Completed")
-        ).firstMatch
-        XCTAssertTrue(completedStatus.waitForExistence(timeout: 10))
+        XCTAssertFalse(app.otherElements.matching(
+            NSPredicate(format: "label == %@", "Session status")
+        ).firstMatch.exists)
+        XCTAssertFalse(app.tabBars.firstMatch.exists)
+        XCTAssertTrue(composer.isHittable)
         Thread.sleep(forTimeInterval: 1)
         XCTAssertEqual(app.staticTexts.matching(NSPredicate(format: "label == %@", "Streaming complete")).count, 1)
         XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label == %@", "Tool read")).count, 1)

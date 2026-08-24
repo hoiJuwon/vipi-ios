@@ -75,26 +75,16 @@ struct SessionListView: View {
     }
 
     private func preview(for session: RemoteSession) -> String {
-        switch session.phase {
-        case .working:
-            return "응답을 생성하고 있어요…"
-        case .waitingForInput:
-            return "응답이 필요해요"
-        case .failed:
-            return "작업 중 오류가 발생했어요"
-        case .offline:
-            return "오프라인"
-        case .idle, .completed:
-            if let text = store.messages(for: session.id).last?.text,
-               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                return text.replacingOccurrences(of: "\n", with: " ")
-            }
-            return session.phase == .completed ? "작업이 완료됐어요" : "새 메시지를 보내보세요"
+        if let text = store.messages(for: session.id).last(where: {
+            !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        })?.text {
+            return text.replacingOccurrences(of: "\n", with: " ")
         }
+        return "대화를 시작해보세요"
     }
 
     private func accessibilityValue(for session: RemoteSession) -> String {
-        let unread = session.unread ? ", 읽지 않은 응답 있음" : ""
+        let unread = session.hasUnreadResponse ? ", 읽지 않은 응답 있음" : ""
         return "\(preview(for: session)), \(SessionListTimeFormatter.string(from: session.lastActivityAt))\(unread)"
     }
 }
@@ -106,28 +96,23 @@ private struct SessionRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 7) {
-                Text(session.name)
-                    .font(.body.weight(session.unread ? .bold : .semibold))
-                    .foregroundStyle(VipiTheme.primary)
-                    .lineLimit(1)
-
                 HStack(spacing: 7) {
+                    Text(session.name)
+                        .font(.body.weight(session.hasUnreadResponse ? .bold : .semibold))
+                        .foregroundStyle(VipiTheme.primary)
+                        .lineLimit(1)
                     if session.phase == .working {
                         ProgressView()
                             .controlSize(.mini)
                             .tint(VipiTheme.accent)
                             .accessibilityHidden(true)
-                    } else if session.phase == .waitingForInput || session.phase == .failed {
-                        Circle()
-                            .fill(session.phase.color)
-                            .frame(width: 7, height: 7)
-                            .accessibilityHidden(true)
                     }
-                    Text(preview)
-                        .lineLimit(2)
                 }
-                .font(.subheadline)
-                .foregroundStyle(statusColor)
+
+                Text(preview)
+                    .font(.subheadline)
+                    .foregroundStyle(VipiTheme.secondary)
+                    .lineLimit(2)
             }
 
             Spacer(minLength: 8)
@@ -138,7 +123,7 @@ private struct SessionRow: View {
                     .foregroundStyle(VipiTheme.secondary)
                     .lineLimit(1)
 
-                if session.unread {
+                if session.hasUnreadResponse {
                     Text("1")
                         .font(.caption2.bold())
                         .foregroundStyle(.white)
@@ -152,17 +137,12 @@ private struct SessionRow: View {
         .padding(.vertical, 14)
         .frame(maxWidth: .infinity, minHeight: 76, alignment: .leading)
         .contentShape(Rectangle())
-        .background(session.unread ? VipiTheme.accent.opacity(0.055) : Color.clear)
+        .background(session.hasUnreadResponse ? VipiTheme.accent.opacity(0.055) : Color.clear)
     }
+}
 
-    private var statusColor: Color {
-        switch session.phase {
-        case .working: VipiTheme.accent
-        case .waitingForInput: VipiTheme.warning
-        case .failed: VipiTheme.danger
-        default: VipiTheme.secondary
-        }
-    }
+private extension RemoteSession {
+    var hasUnreadResponse: Bool { unread || phase == .waitingForInput }
 }
 
 enum SessionListSearch {

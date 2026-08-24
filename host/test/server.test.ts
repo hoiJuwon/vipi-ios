@@ -130,6 +130,23 @@ test("normalizes message, tool, and incremental branch history", () => {
   assert.equal(history.lastEntryID, "e3");
 });
 
+test("bounds large real histories below the WebSocket payload limit", () => {
+  const entries = Array.from({ length: 80 }, (_, index) => ({
+    id: `large-${index}`,
+    type: "message",
+    message: {
+      role: index % 2 === 0 ? "user" : "assistant",
+      content: [{ type: "text", text: `${index}: ${"한글 history ".repeat(4_000)}` }],
+      timestamp: index + 1,
+    },
+  }));
+  const history = normalizeHistory(entries);
+  assert.ok(Buffer.byteLength(JSON.stringify(history), "utf8") < 512 * 1024);
+  assert.equal(history.lastEntryID, "large-79");
+  assert.equal(history.events.at(-1)?.entryID, "large-79");
+  assert.ok(history.events.length < entries.length);
+});
+
 test("replays missed normalized runtime events from a sequence cursor", async () => {
   const runtime = await connect();
   send(runtime, "runtime.register", { token, session: {

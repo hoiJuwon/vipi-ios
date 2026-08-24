@@ -19,6 +19,7 @@ final class AppStore {
     private let broker: BrokerClient
     private let allowsInsecureLocalhostForUITesting: Bool
     private var lastEntryBySession: [String: String] = [:]
+    private var lastMessageAtBySession: [String: Date] = [:]
     private var pendingHistoryRequests: [String: String] = [:]
     private var historyRequestsInFlight: Set<String> = []
 
@@ -29,14 +30,23 @@ final class AppStore {
     ) {
         self.broker = broker
         self.allowsInsecureLocalhostForUITesting = allowsInsecureLocalhostForUITesting
-        if CommandLine.arguments.contains("--uitesting"),
+        #if DEBUG
+        let acceptsDevelopmentPairing = CommandLine.arguments.contains("--uitesting") || CommandLine.arguments.contains("--simulator-live")
+        #else
+        let acceptsDevelopmentPairing = false
+        #endif
+        if acceptsDevelopmentPairing,
            let fixture = ProcessInfo.processInfo.environment["VIPI_E2E_PAIRING"],
            let data = fixture.data(using: .utf8),
            let pairing = try? JSONDecoder().decode(PairingPayload.self, from: data) {
             host = pairing.host
             token = pairing.token
         } else {
+            #if targetEnvironment(simulator)
+            token = KeychainStore.loadToken() ?? UserDefaults.standard.string(forKey: "vipi.simulatorToken") ?? ""
+            #else
             token = KeychainStore.loadToken() ?? ""
+            #endif
             host = UserDefaults.standard.string(forKey: "vipi.host") ?? ""
         }
         if startsInDemoMode { loadDemoData() }
@@ -60,6 +70,19 @@ final class AppStore {
     }
     func messages(for id: String) -> [ChatMessage] { messagesBySession[id] ?? [] }
     func branches(for id: String) -> [BranchNode] { branchesBySession[id] ?? [] }
+    func isHistoryLoading(for id: String) -> Bool { historyRequestsInFlight.contains(id) }
+
+    func connectIfConfigured() async {
+        guard connectionState != .demo,
+              case .disconnected = connectionState,
+              !host.isEmpty, !token.isEmpty else { return }
+        await connect()
+    }
+
+    func ensureHistory(for sessionID: String) async {
+        guard connectionState == .connected, messages(for: sessionID).isEmpty else { return }
+        await requestHistory(for: sessionID)
+    }
 
     func connect() async {
         guard !host.isEmpty, !token.isEmpty else {
@@ -117,6 +140,7 @@ final class AppStore {
         token = pairing.token
         UserDefaults.standard.set(host, forKey: "vipi.host")
         try KeychainStore.saveToken(token)
+        persistSimulatorToken(token)
     }
 
     func rotateToken() async {
@@ -184,6 +208,12 @@ final class AppStore {
                 payload: HistoryPayload(sessionID: sessionID, afterEntryID: lastEntryBySession[sessionID])
             )
             pendingHistoryRequests[requestID] = sessionID
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(12))
+                guard let self, self.pendingHistoryRequests[requestID] == sessionID else { return }
+                self.pendingHistoryRequests.removeValue(forKey: requestID)
+                self.historyRequestsInFlight.remove(sessionID)
+            }
         } catch {
             historyRequestsInFlight.remove(sessionID)
             connectionState = .disconnected(error.localizedDescription)
@@ -226,6 +256,12 @@ final class AppStore {
                 messages[index] = updated
             } else { messages.append(message) }
             messagesBySession[sessionID] = messages
+            if let timestamp = event.timestamp {
+                lastMessageAtBySession[sessionID] = max(lastMessageAtBySession[sessionID] ?? .distantPast, timestamp)
+                if let index = sessions.firstIndex(where: { $0.id == sessionID }) {
+                    sessions[index].lastActivityAt = lastMessageAtBySession[sessionID] ?? timestamp
+                }
+            }
         } else if event.kind == "tool", let toolCallID = event.toolCallID, let name = event.name {
             let tool = ToolActivity(
                 id: toolCallID,
@@ -283,6 +319,7 @@ final class AppStore {
             connectionState = .connected
             UserDefaults.standard.set(host, forKey: "vipi.host")
             try? KeychainStore.saveToken(token)
+            persistSimulatorToken(token)
             return
         }
         if envelope.type == "auth.rotated",
@@ -291,6 +328,7 @@ final class AppStore {
             token = rotatedToken
             await broker.updateToken(rotatedToken)
             try? KeychainStore.saveToken(rotatedToken)
+            persistSimulatorToken(rotatedToken)
             return
         }
         if envelope.type == "sessions.snapshot", let payload = envelope.payload {
@@ -301,10 +339,16 @@ final class AppStore {
                 let snapshot = try decoder.decode(SessionSnapshot.self, from: data)
                 if snapshot.replayReset == true {
                     lastEntryBySession.removeAll()
+                    lastMessageAtBySession.removeAll()
                     pendingHistoryRequests.removeAll()
                     historyRequestsInFlight.removeAll()
                 }
-                sessions = snapshot.sessions
+                sessions = snapshot.sessions.map { session in
+                    guard let lastMessageAt = lastMessageAtBySession[session.id] else { return session }
+                    var updated = session
+                    updated.lastActivityAt = lastMessageAt
+                    return updated
+                }
                 for session in sessions where session.phase != .offline {
                     Task { await requestHistory(for: session.id) }
                 }
@@ -337,6 +381,14 @@ final class AppStore {
            case .string(let code) = payload["code"] {
             commandError = code
         }
+    }
+
+    private func persistSimulatorToken(_ value: String) {
+        #if targetEnvironment(simulator)
+        // Simulator-only fallback keeps live development pairing across app
+        // relaunches. Physical-device builds remain Keychain-only.
+        UserDefaults.standard.set(value, forKey: "vipi.simulatorToken")
+        #endif
     }
 }
 

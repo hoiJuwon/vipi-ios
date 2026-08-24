@@ -23,6 +23,7 @@ struct VipiApp: App {
         WindowGroup {
             RootView()
                 .environment(store)
+                .task { await store.connectIfConfigured() }
         }
     }
 }

@@ -12,15 +12,14 @@ struct ChatView: View {
     var body: some View {
         ZStack {
             VipiBackdrop()
-            VStack(spacing: 0) {
-                if let session { SessionContextBar(session: session) }
-                transcript
-                ComposerView(draft: $draft, phase: session?.phase ?? .offline) { mode in
-                    let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !text.isEmpty else { return }
-                    draft = ""
-                    Task { await store.send(text: text, to: sessionID, delivery: mode) }
-                }
+            transcript
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            ComposerView(draft: $draft, phase: session?.phase ?? .offline) { mode in
+                let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !text.isEmpty else { return }
+                draft = ""
+                Task { await store.send(text: text, to: sessionID, delivery: mode) }
             }
         }
         .navigationTitle(session?.name.components(separatedBy: " / ").last ?? "Session")
@@ -47,7 +46,11 @@ struct ChatView: View {
                 .accessibilityIdentifier("chat.menu")
             }
         }
-        .onAppear { store.markRead(sessionID) }
+        .toolbar(.hidden, for: .tabBar)
+        .onAppear {
+            store.markRead(sessionID)
+            Task { await store.ensureHistory(for: sessionID) }
+        }
         .alert("Command failed", isPresented: commandErrorPresented) {
             Button("OK") { store.commandError = nil }
         } message: {
@@ -68,48 +71,63 @@ struct ChatView: View {
         )
     }
 
+    @ViewBuilder
     private var transcript: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 20) {
-                    ForEach(store.messages(for: sessionID)) { message in
-                        MessageView(message: message).id(message.id)
+        if store.isHistoryLoading(for: sessionID) && store.messages(for: sessionID).isEmpty {
+            ChatLoadingView()
+                .accessibilityIdentifier("chat.loading")
+        } else {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 20) {
+                        ForEach(store.messages(for: sessionID)) { message in
+                            MessageView(message: message).id(message.id)
+                        }
+                        Color.clear.frame(height: 4).id("bottom")
                     }
-                    Color.clear.frame(height: 4).id("bottom")
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 18)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 18)
-            }
-            .scrollDismissesKeyboard(.interactively)
-            .accessibilityIdentifier("chat.transcript")
-            .onChange(of: store.messages(for: sessionID).count) {
-                withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
+                .scrollDismissesKeyboard(.interactively)
+                .accessibilityIdentifier("chat.transcript")
+                .onChange(of: store.messages(for: sessionID).count) {
+                    withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
+                }
             }
         }
     }
 }
 
-private struct SessionContextBar: View {
-    let session: RemoteSession
+private struct ChatLoadingView: View {
+    @State private var pulse = false
 
     var body: some View {
-        HStack(spacing: 10) {
-            StatusPill(phase: session.phase)
-            Text(session.model).font(.caption.weight(.medium))
-            Text("·").foregroundStyle(VipiTheme.secondary)
-            Text(session.thinkingLevel).font(.caption)
+        VStack(spacing: 22) {
+            loadingBubble(width: 0.72, alignment: .trailing)
+            loadingBubble(width: 0.9, alignment: .leading)
+            loadingBubble(width: 0.58, alignment: .trailing)
             Spacer()
-            Gauge(value: Double(session.contextPercent), in: 0...100) { EmptyView() }
-                .gaugeStyle(.accessoryCircularCapacity)
-                .tint(session.contextPercent > 80 ? VipiTheme.warning : VipiTheme.accent)
-                .frame(width: 22, height: 22)
-            Text("\(session.contextPercent)%").font(.caption2.monospacedDigit())
         }
-        .foregroundStyle(VipiTheme.secondary)
-        .padding(.horizontal, 14).padding(.vertical, 9)
-        .vipiGlass(in: Capsule())
-        .padding(.horizontal, 12)
-        .padding(.top, 4)
+        .padding(.horizontal, 16)
+        .padding(.top, 22)
+        .opacity(pulse ? 0.42 : 0.78)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 0.85).repeatForever(autoreverses: true)) {
+                pulse = true
+            }
+        }
+        .accessibilityLabel("대화를 불러오는 중")
+    }
+
+    private func loadingBubble(width: CGFloat, alignment: Alignment) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Capsule().fill(VipiTheme.stroke).frame(width: 82, height: 10)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(.thinMaterial)
+                .frame(maxWidth: .infinity, minHeight: 72)
+        }
+        .frame(maxWidth: .infinity, alignment: alignment)
+        .frame(width: UIScreen.main.bounds.width * width)
     }
 }
 

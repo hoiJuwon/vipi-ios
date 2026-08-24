@@ -43,6 +43,9 @@ wss.on("connection", (socket) => {
   let rateWindowStarted = Date.now();
   let rateCount = 0;
   const authTimer = setTimeout(() => socket.close(4001, "authentication timeout"), 10_000);
+  // ws emits an error before closing oversized or malformed peers. Keep that
+  // peer-local so one stale runtime can never terminate the personal host.
+  socket.on("error", () => {});
 
   socket.on("message", (raw) => {
     const now = Date.now();

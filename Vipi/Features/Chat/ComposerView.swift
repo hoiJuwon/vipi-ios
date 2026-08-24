@@ -7,41 +7,51 @@ struct ComposerView: View {
     @State private var selectedDelivery: PromptDelivery = .prompt
 
     var body: some View {
-        VStack(spacing: 8) {
+        HStack(alignment: .bottom, spacing: 9) {
+            TextField("Message Pi…", text: $draft, axis: .vertical)
+                .accessibilityIdentifier("chat.composer")
+                .accessibilityLabel("Message Pi")
+                .lineLimit(1...6)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 11)
+                .vipiGlass(interactive: true, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+
             if phase == .working {
-                HStack(spacing: 8) {
-                    Text("Pi is working").font(.caption.weight(.medium)).foregroundStyle(VipiTheme.secondary)
-                    Spacer()
+                Menu {
                     Picker("Delivery", selection: $selectedDelivery) {
-                        Text("Queue").tag(PromptDelivery.followUp)
-                        Text("Steer").tag(PromptDelivery.steer)
+                        Text("Queue after response").tag(PromptDelivery.followUp)
+                        Text("Steer current response").tag(PromptDelivery.steer)
                     }
-                    .pickerStyle(.segmented).frame(width: 150)
+                } label: {
+                    Image(systemName: selectedDelivery == .steer ? "arrow.triangle.turn.up.right.diamond.fill" : "text.line.last.and.arrowtriangle.forward")
+                        .font(.subheadline.bold())
+                        .foregroundStyle(VipiTheme.accent)
+                        .frame(width: 38, height: 38)
+                        .vipiGlass(interactive: true, in: Circle())
                 }
+                .accessibilityLabel("Message delivery mode")
             }
-            HStack(alignment: .bottom, spacing: 10) {
-                TextField("Message Pi…", text: $draft, axis: .vertical)
-                    .accessibilityIdentifier("chat.composer")
-                    .accessibilityLabel("Message Pi")
-                    .lineLimit(1...6)
-                    .padding(.horizontal, 14).padding(.vertical, 11)
-                    .vipiGlass(interactive: true, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                Button { onSend(phase == .working ? selectedDelivery : .prompt) } label: {
-                    Image(systemName: phase == .working && draft.isEmpty ? "stop.fill" : "arrow.up")
-                        .font(.body.bold()).foregroundStyle(.white)
-                        .frame(width: 40, height: 40)
-                        .vipiGlass(
-                            tint: draft.isEmpty ? VipiTheme.secondary.opacity(0.2) : VipiTheme.accent,
-                            interactive: true,
-                            in: Circle()
-                        )
-                }
-                .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                .accessibilityIdentifier("chat.send")
-                .accessibilityLabel("Send message")
-                .accessibilityHint(phase == .working ? "Delivers using the selected queue or steer mode" : "Sends a prompt to Pi")
+
+            Button { onSend(phase == .working ? selectedDelivery : .prompt) } label: {
+                Image(systemName: "arrow.up")
+                    .font(.body.bold())
+                    .foregroundStyle(.white)
+                    .frame(width: 40, height: 40)
+                    .vipiGlass(
+                        tint: draft.isEmpty ? VipiTheme.secondary.opacity(0.2) : VipiTheme.accent,
+                        interactive: true,
+                        in: Circle()
+                    )
             }
+            .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .accessibilityIdentifier("chat.send")
+            .accessibilityLabel("Send message")
+            .accessibilityHint(phase == .working ? "Delivers using the selected queue or steer mode" : "Sends a prompt to Pi")
         }
-        .padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 8)
+        .padding(.horizontal, 12)
+        .padding(.top, 9)
+        .padding(.bottom, 7)
+        .background(.ultraThinMaterial)
+        .overlay(alignment: .top) { Divider().overlay(VipiTheme.stroke) }
     }
 }

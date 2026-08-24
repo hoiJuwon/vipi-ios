@@ -117,6 +117,25 @@ function normalizeHistoryMessage(messageValue: unknown, entryID: string, index: 
   return events;
 }
 
+const HISTORY_PAYLOAD_BUDGET = 384 * 1024;
+
+function recentEventsWithinBudget(events: NormalizedSessionEvent[]): NormalizedSessionEvent[] {
+  const selected: NormalizedSessionEvent[] = [];
+  let bytes = 2;
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    let event = events[index]!;
+    if (event.kind === "message" && Buffer.byteLength(event.text, "utf8") > 64 * 1024) {
+      event = { ...event, text: `${event.text.slice(0, 32 * 1024)}\n…[older content truncated on mobile]` };
+    }
+    const eventBytes = Buffer.byteLength(JSON.stringify(event), "utf8") + 1;
+    if (selected.length > 0 && bytes + eventBytes > HISTORY_PAYLOAD_BUDGET) break;
+    if (eventBytes > HISTORY_PAYLOAD_BUDGET) continue;
+    selected.push(event);
+    bytes += eventBytes;
+  }
+  return selected.reverse();
+}
+
 export function normalizeHistory(entriesValue: unknown, afterEntryID?: string): { events: NormalizedSessionEvent[]; lastEntryID?: string } {
   if (!Array.isArray(entriesValue)) return { events: [] };
   const entries = entriesValue.map(record).filter((entry): entry is UnknownRecord => Boolean(entry));
@@ -134,5 +153,5 @@ export function normalizeHistory(entriesValue: unknown, afterEntryID?: string): 
     }
   }
   const last = entries.at(-1)?.id;
-  return { events, ...(typeof last === "string" ? { lastEntryID: last } : {}) };
+  return { events: recentEventsWithinBudget(events), ...(typeof last === "string" ? { lastEntryID: last } : {}) };
 }
