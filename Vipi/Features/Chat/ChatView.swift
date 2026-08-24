@@ -42,6 +42,7 @@ struct ChatView: View {
                         .frame(width: 34, height: 34)
                         .vipiGlass(interactive: true, in: Circle())
                 }
+                .accessibilityIdentifier("chat.menu")
             }
         }
         .onAppear { store.markRead(sessionID) }

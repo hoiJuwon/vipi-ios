@@ -20,8 +20,16 @@ final class AppStore {
     private var pendingHistoryRequests: [String: String] = [:]
 
     init() {
-        token = KeychainStore.loadToken() ?? ""
-        host = UserDefaults.standard.string(forKey: "vipi.host") ?? ""
+        if CommandLine.arguments.contains("--uitesting"),
+           let fixture = ProcessInfo.processInfo.environment["VIPI_E2E_PAIRING"],
+           let data = fixture.data(using: .utf8),
+           let pairing = try? JSONDecoder().decode(PairingPayload.self, from: data) {
+            host = pairing.host
+            token = pairing.token
+        } else {
+            token = KeychainStore.loadToken() ?? ""
+            host = UserDefaults.standard.string(forKey: "vipi.host") ?? ""
+        }
     }
 
     var workspaceGroups: [WorkspaceGroup] {
@@ -136,8 +144,11 @@ final class AppStore {
                 isStreaming: event.streaming ?? false
             )
             var messages = messagesBySession[sessionID, default: []]
-            if let index = messages.firstIndex(where: { $0.id == message.id }) { messages[index] = message }
-            else { messages.append(message) }
+            if let index = messages.firstIndex(where: { $0.id == message.id }) {
+                var updated = message
+                updated.tools = messages[index].tools
+                messages[index] = updated
+            } else { messages.append(message) }
             messagesBySession[sessionID] = messages
         } else if event.kind == "tool", let toolCallID = event.toolCallID, let name = event.name {
             let tool = ToolActivity(
