@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,6 +13,7 @@ let child: ChildProcess;
 let directory: string;
 let port: number;
 let token: string;
+let hostOutput = "";
 
 async function availablePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -57,6 +58,14 @@ function send(socket: WebSocket, type: string, payload: object, id?: string): vo
   socket.send(JSON.stringify({ type, protocolVersion, payload, ...(id ? { id } : {}) }));
 }
 
+async function receiveType(socket: WebSocket, type: string): Promise<Record<string, any>> {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const value = await receive(socket);
+    if (value.type === type) return value;
+  }
+  throw new Error(`did not receive ${type}`);
+}
+
 before(async () => {
   directory = await mkdtemp(join(tmpdir(), "vipi-test-"));
   port = await availablePort();
@@ -69,10 +78,12 @@ before(async () => {
     const timer = setTimeout(() => reject(new Error("host startup timeout")), 5_000);
     child.once("exit", (code) => reject(new Error(`host exited ${code}`)));
     child.stdout?.on("data", (data) => {
+      hostOutput += data.toString();
       if (data.toString().includes("Vipi host listening")) { clearTimeout(timer); resolve(); }
     });
   });
   token = (await readFile(join(directory, "vipi", "token"), "utf8")).trim();
+  assert.equal((await stat(join(directory, "vipi", "token"))).mode & 0o777, 0o600);
 });
 
 after(async () => {
@@ -173,4 +184,31 @@ test("routes prompt modes, abort, history, responses, and tool events", async ()
   assert.equal(tool.payload.event.kind, "tool");
   mobile.close();
   runtime.close();
+});
+
+test("rotates tokens atomically, revokes peers, and does not log bearer secrets", async () => {
+  assert.equal(hostOutput.includes(token), false);
+  const owner = await connect();
+  send(owner, "auth.authenticate", { token }, "owner-auth");
+  await receive(owner);
+  await receive(owner);
+  const peer = await connect();
+  send(peer, "auth.authenticate", { token }, "peer-auth");
+  await receive(peer);
+  await receive(peer);
+  const peerClosed = new Promise<number>((resolve) => peer.once("close", (code) => resolve(code)));
+
+  send(owner, "auth.rotate", {}, "rotate-1");
+  const rotated = await receiveType(owner, "auth.rotated");
+  const previous = token;
+  token = rotated.payload.token;
+  assert.notEqual(token, previous);
+  assert.equal(await peerClosed, 4001);
+  const stored = (await readFile(join(directory, "vipi", "token"), "utf8")).trim();
+  assert.equal(stored, token);
+
+  const rejected = await connect();
+  send(rejected, "auth.authenticate", { token: previous }, "old-auth");
+  assert.equal(await new Promise<number>((resolve) => rejected.once("close", (code) => resolve(code))), 4001);
+  owner.close();
 });

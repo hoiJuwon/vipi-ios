@@ -2,12 +2,16 @@ import { createServer } from "node:http";
 import { WebSocketServer, WebSocket } from "ws";
 import qrcode from "qrcode-terminal";
 import { envelope, PROTOCOL_VERSION, type Envelope, type SessionRecord } from "./protocol.js";
-import { loadOrCreateToken, tokenMatches } from "./token.js";
+import { loadOrCreateToken, rotateToken, tokenMatches, tokenPath } from "./token.js";
 import { readTmuxRegistry } from "./registry.js";
 
 const host = process.env.VIPI_HOST ?? "127.0.0.1";
 const port = Number(process.env.VIPI_PORT ?? "8765");
-const token = loadOrCreateToken();
+const loopbackHosts = new Set(["127.0.0.1", "::1", "localhost"]);
+if (!loopbackHosts.has(host) && process.env.VIPI_ALLOW_NON_LOOPBACK !== "1") {
+  throw new Error("Refusing non-loopback bind; publish 127.0.0.1 through Tailscale Serve instead");
+}
+let token = loadOrCreateToken();
 let sequence = 0;
 const replayLimit = Math.max(100, Number(process.env.VIPI_REPLAY_LIMIT ?? "1000"));
 const replayBuffer: Envelope[] = [];
@@ -29,9 +33,14 @@ const wss = new WebSocketServer({ server, path: "/ws", maxPayload: 512 * 1024 })
 wss.on("connection", (socket) => {
   let role: "unknown" | "mobile" | "runtime" = "unknown";
   let runtimeSessionID: string | undefined;
+  let rateWindowStarted = Date.now();
+  let rateCount = 0;
   const authTimer = setTimeout(() => socket.close(4001, "authentication timeout"), 10_000);
 
   socket.on("message", (raw) => {
+    const now = Date.now();
+    if (now - rateWindowStarted >= 60_000) { rateWindowStarted = now; rateCount = 0; }
+    if (++rateCount > 120) { socket.close(4008, "rate limit exceeded"); return; }
     let message: Envelope<Record<string, unknown>>;
     try { message = JSON.parse(raw.toString()) as Envelope<Record<string, unknown>>; }
     catch { socket.send(JSON.stringify(envelope("error", { code: "BAD_JSON" }))); return; }
@@ -82,6 +91,16 @@ wss.on("connection", (socket) => {
       socket.send(JSON.stringify(envelope("sessions.snapshot", { sessions: mergedSessions() }, message.id, ++sequence)));
       return;
     }
+    if (message.type === "auth.rotate") {
+      token = rotateToken();
+      socket.send(JSON.stringify(envelope("auth.rotated", { token }, message.id, ++sequence)));
+      for (const client of mobileClients) if (client !== socket) client.close(4001, "token rotated");
+      return;
+    }
+    if (!new Set(["session.prompt", "session.abort", "session.history"]).has(message.type)) {
+      socket.send(JSON.stringify(envelope("error", { code: "UNSUPPORTED_COMMAND" }, message.id, ++sequence)));
+      return;
+    }
     const sessionID = message.payload?.sessionID;
     if (typeof sessionID !== "string") return;
     const runtime = runtimes.get(sessionID);
@@ -122,7 +141,10 @@ function broadcast(type: string, payload: unknown): void {
 server.listen(port, host, () => {
   const local = `http://${host}:${port}`;
   console.log(`Vipi host listening on ${local}`);
-  console.log(`Token: ${token}`);
+  console.log(`Authentication token stored at ${tokenPath}`);
   console.log(`Tailscale: tailscale serve --bg ${local}`);
-  qrcode.generate(JSON.stringify({ host: local, token }), { small: true });
+  if (process.env.VIPI_SHOW_PAIRING_QR === "1") {
+    console.warn("Pairing QR contains a bearer secret; scan it privately and clear this terminal afterward.");
+    qrcode.generate(JSON.stringify({ host: local, token }), { small: true });
+  }
 });

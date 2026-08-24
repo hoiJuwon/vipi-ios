@@ -71,8 +71,8 @@ npm run host
 The host:
 
 - binds to `127.0.0.1:8765` by default
-- creates a 256-bit token at `~/.pi/agent/vipi/token` with mode `0600`
-- prints a local pairing QR payload
+- creates a 256-bit token at `~/.pi/agent/vipi/token` with mode `0600` without logging it
+- prints a pairing QR only when explicitly started with `VIPI_SHOW_PAIRING_QR=1`
 - exposes `GET /health`
 - accepts mobile and Pi-runtime WebSocket clients at `/ws`
 
@@ -96,7 +96,28 @@ Use `https://<machine>.<tailnet>.ts.net` in Vipi Settings and copy the token fro
 cat ~/.pi/agent/vipi/token
 ```
 
-Do not bind this service publicly. A connected device can ask Pi to execute commands and modify files with your account permissions.
+Do not bind this service publicly. The host refuses non-loopback binds unless the explicit unsafe override `VIPI_ALLOW_NON_LOOPBACK=1` is set. A connected device can ask Pi to execute commands and modify files with your account permissions.
+
+Verify that Serve is tailnet-only before pairing:
+
+```bash
+tailscale serve status
+tailscale status
+```
+
+For QR pairing, stop any unattended terminal recording and run `VIPI_SHOW_PAIRING_QR=1 npm run host`; the QR is a bearer secret. Token rotation is available to an authenticated app and atomically replaces the token, revoking other mobile connections.
+
+## Run at login with launchd
+
+After reviewing the generated service settings:
+
+```bash
+./scripts/install-launchd.sh
+# later, if needed:
+./scripts/uninstall-launchd.sh
+```
+
+The LaunchAgent binds only to `127.0.0.1`, restarts on failure, and stores logs under `~/.pi/agent/vipi/`. Token values are never written to those logs.
 
 ## Load the Pi extension during development
 
