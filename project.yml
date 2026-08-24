@@ -31,10 +31,18 @@ targets:
     scheme:
       testTargets:
         - VipiTests
+        - VipiUITests
   VipiTests:
     type: bundle.unit-test
     platform: iOS
     sources:
       - path: VipiTests
+    dependencies:
+      - target: Vipi
+  VipiUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: VipiUITests
     dependencies:
       - target: Vipi

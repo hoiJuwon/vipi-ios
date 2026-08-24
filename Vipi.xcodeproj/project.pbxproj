@@ -12,6 +12,7 @@
 		14CAA51CFCBFFE50D7693061 /* ComposerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70423E51C18BD7963D1288E8 /* ComposerView.swift */; };
 		188A110E5F62E54930B428E5 /* ActivityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3FD97EC8475EDE216CB59E0 /* ActivityView.swift */; };
 		2BF9CF22338B79464BA39B4B /* ChatModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72FF8640084103979F5F7473 /* ChatModels.swift */; };
+		32AC9AF7F6880204566289A8 /* VipiUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAEF1AF53B3ECC6C955E5219 /* VipiUITests.swift */; };
 		414A19E6F40D0DD5740CEF81 /* VipiApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75B5AAF1B02E8D14B6D7E61F /* VipiApp.swift */; };
 		4E82335184F1D08DEB7A7E64 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A1E79DF96186F6A5F9D412D /* KeychainStore.swift */; };
 		568FD418BC3F3A8E3D82DEFE /* StatusPill.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51A56E1D0C45CB92DB1FFCDC /* StatusPill.swift */; };
@@ -35,6 +36,13 @@
 			remoteGlobalIDString = 5BB33AA2AE31396145E0FE11;
 			remoteInfo = Vipi;
 		};
+		B3D02AFCAA32E36D27750DA7 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 3DCE461173E1833A5ABEB98D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5BB33AA2AE31396145E0FE11;
+			remoteInfo = Vipi;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
@@ -45,6 +53,7 @@
 		3A1E79DF96186F6A5F9D412D /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 		3E239652719F5AEB87D138D0 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
 		4C7C821E21D70BBF06358AE6 /* MockData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockData.swift; sourceTree = "<group>"; };
+		4CE504CC04401C98DC276233 /* VipiUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = VipiUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		51A56E1D0C45CB92DB1FFCDC /* StatusPill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusPill.swift; sourceTree = "<group>"; };
 		6246E1CE326A44F6EF0041CB /* SessionModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionModels.swift; sourceTree = "<group>"; };
 		662425F04AF7242E508F30CF /* SessionModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionModelTests.swift; sourceTree = "<group>"; };
@@ -57,6 +66,7 @@
 		AEA45577862E5D8092E1F11A /* VipiTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VipiTheme.swift; sourceTree = "<group>"; };
 		D3FD97EC8475EDE216CB59E0 /* ActivityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityView.swift; sourceTree = "<group>"; };
 		E4C3A37166A3EAB55DEA70D3 /* SessionListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionListView.swift; sourceTree = "<group>"; };
+		EAEF1AF53B3ECC6C955E5219 /* VipiUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VipiUITests.swift; sourceTree = "<group>"; };
 		EEC9C0D7E27AADAE735504FE /* SessionSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionSheets.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -77,6 +87,14 @@
 				9C2627C2C6A76D4D798CDE4F /* WireProtocol.swift */,
 			);
 			path = Networking;
+			sourceTree = "<group>";
+		};
+		32446D209FBBE99E078371C8 /* VipiUITests */ = {
+			isa = PBXGroup;
+			children = (
+				EAEF1AF53B3ECC6C955E5219 /* VipiUITests.swift */,
+			);
+			path = VipiUITests;
 			sourceTree = "<group>";
 		};
 		3800C896E9C514AF4298186D /* Features */ = {
@@ -103,6 +121,7 @@
 			children = (
 				0CFDFFA8E9005F6741B77885 /* Vipi.app */,
 				257DD7057C41DF8DA0E70B76 /* VipiTests.xctest */,
+				4CE504CC04401C98DC276233 /* VipiUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -163,6 +182,7 @@
 			children = (
 				86A2E914793CF683DFA26B87 /* Vipi */,
 				C6D1A319D849F630CBB90985 /* VipiTests */,
+				32446D209FBBE99E078371C8 /* VipiUITests */,
 				5763F9F8A5A0F05C907C944E /* Products */,
 			);
 			sourceTree = "<group>";
@@ -210,6 +230,24 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		101EDCB50452B47F84C25C49 /* VipiUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CD2EEDEC017E5863A22F57F8 /* Build configuration list for PBXNativeTarget "VipiUITests" */;
+			buildPhases = (
+				03D6944FE0DD63129991B82D /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				929FD977278BA17B974C9B51 /* PBXTargetDependency */,
+			);
+			name = VipiUITests;
+			packageProductDependencies = (
+			);
+			productName = VipiUITests;
+			productReference = 4CE504CC04401C98DC276233 /* VipiUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 		5BB33AA2AE31396145E0FE11 /* Vipi */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = D7E9161BEAE3D1D308A36A99 /* Build configuration list for PBXNativeTarget "Vipi" */;
@@ -254,6 +292,10 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 2600;
 				TargetAttributes = {
+					101EDCB50452B47F84C25C49 = {
+						ProvisioningStyle = Automatic;
+						TestTargetID = 5BB33AA2AE31396145E0FE11;
+					};
 					5BB33AA2AE31396145E0FE11 = {
 						ProvisioningStyle = Automatic;
 					};
@@ -278,11 +320,20 @@
 			targets = (
 				5BB33AA2AE31396145E0FE11 /* Vipi */,
 				D32991DC072394E0D68E5A09 /* VipiTests */,
+				101EDCB50452B47F84C25C49 /* VipiUITests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXSourcesBuildPhase section */
+		03D6944FE0DD63129991B82D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				32AC9AF7F6880204566289A8 /* VipiUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		44F86B7A5667B56786EE7C5A /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -322,6 +373,11 @@
 			isa = PBXTargetDependency;
 			target = 5BB33AA2AE31396145E0FE11 /* Vipi */;
 			targetProxy = 6CBA8D1DABB96B1898CA1A56 /* PBXContainerItemProxy */;
+		};
+		929FD977278BA17B974C9B51 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5BB33AA2AE31396145E0FE11 /* Vipi */;
+			targetProxy = B3D02AFCAA32E36D27750DA7 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -412,6 +468,36 @@
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		26D62D5E1395FCEE5A124B8D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Vipi;
+			};
+			name = Release;
+		};
+		7D948A34E61D599B538055ED /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Vipi;
 			};
 			name = Debug;
 		};
@@ -544,6 +630,15 @@
 			buildConfigurations = (
 				039FB6C44C0692958F3CAD2C /* Debug */,
 				DDCC477C1FDBFFE4AA8DB4C9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		CD2EEDEC017E5863A22F57F8 /* Build configuration list for PBXNativeTarget "VipiUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7D948A34E61D599B538055ED /* Debug */,
+				26D62D5E1395FCEE5A124B8D /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

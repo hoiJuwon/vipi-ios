@@ -183,7 +183,7 @@ final class AppStore {
         messagesBySession[sessionID, default: []].append(pending)
     }
 
-    private func handle(_ envelope: ServerEnvelope) {
+    func handle(_ envelope: ServerEnvelope) {
         // Typed event reducers are intentionally centralized here. The host
         // protocol can evolve without coupling wire payloads to SwiftUI views.
         if envelope.type == "auth.ok" {

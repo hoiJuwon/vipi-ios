@@ -50,6 +50,17 @@
                ReferencedContainer = "container:Vipi.xcodeproj">
             </BuildableReference>
          </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "101EDCB50452B47F84C25C49"
+               BuildableName = "VipiUITests.xctest"
+               BlueprintName = "VipiUITests"
+               ReferencedContainer = "container:Vipi.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
       <CommandLineArguments>
       </CommandLineArguments>
