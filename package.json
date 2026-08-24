@@ -9,7 +9,8 @@
   "scripts": {
     "host": "tsx host/src/server.ts",
     "host:check": "tsc --noEmit -p host/tsconfig.json",
-    "check": "npm run host:check"
+    "host:test": "node --import tsx --test host/test/**/*.test.ts",
+    "check": "npm run host:check && npm run host:test"
   },
   "pi": {
     "extensions": ["./extension/index.ts"]

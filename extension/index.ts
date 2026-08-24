@@ -3,13 +3,21 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import WebSocket from "ws";
+import { normalizeHistory, normalizeMessage, normalizeToolEvent } from "../host/src/normalization.js";
 
 const PROTOCOL_VERSION = 1;
 const agentDir = process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent");
 const tokenPath = join(agentDir, "vipi", "token");
 const brokerURL = process.env.VIPI_BROKER_URL ?? "ws://127.0.0.1:8765/ws";
 
-type RuntimeState = { ctx?: ExtensionContext; socket?: WebSocket; reconnect?: NodeJS.Timeout; phase: string; unread: boolean };
+type RuntimeState = {
+  ctx?: ExtensionContext;
+  socket?: WebSocket;
+  reconnect?: NodeJS.Timeout;
+  phase: string;
+  unread: boolean;
+  activeMessageID?: string;
+};
 
 export default function vipiBridge(pi: ExtensionAPI) {
   const runtime: RuntimeState = { phase: "idle", unread: false };
@@ -71,7 +79,8 @@ export default function vipiBridge(pi: ExtensionAPI) {
       }
       if (message.type === "session.abort") { ctx.abort(); reply(true); return; }
       if (message.type === "session.history") {
-        reply(true, { entries: ctx.sessionManager.getBranch() }); return;
+        const afterEntryID = typeof message.payload?.afterEntryID === "string" ? message.payload.afterEntryID : undefined;
+        reply(true, normalizeHistory(ctx.sessionManager.getBranch(), afterEntryID)); return;
       }
       reply(false, { error: "unsupported command" });
     } catch (error) { reply(false, { error: error instanceof Error ? error.message : String(error) }); }
@@ -80,11 +89,34 @@ export default function vipiBridge(pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => { runtime.phase = "idle"; connect(ctx); send("runtime.session", { session: sessionSnapshot(ctx) }); });
   pi.on("session_info_changed", async (_event, ctx) => send("runtime.session", { session: sessionSnapshot(ctx) }));
   pi.on("agent_start", async (_event, ctx) => { runtime.phase = "working"; runtime.unread = false; send("runtime.session", { session: sessionSnapshot(ctx) }); });
-  pi.on("message_update", async (event, ctx) => send("runtime.event", { sessionID: ctx.sessionManager.getSessionId(), event }));
-  pi.on("tool_execution_start", async (event, ctx) => send("runtime.event", { sessionID: ctx.sessionManager.getSessionId(), event }));
-  pi.on("tool_execution_update", async (event, ctx) => send("runtime.event", { sessionID: ctx.sessionManager.getSessionId(), event }));
-  pi.on("tool_execution_end", async (event, ctx) => send("runtime.event", { sessionID: ctx.sessionManager.getSessionId(), event }));
-  pi.on("message_end", async (event, ctx) => send("runtime.event", { sessionID: ctx.sessionManager.getSessionId(), event }));
+  pi.on("message_start", async (event, ctx) => {
+    runtime.activeMessageID = crypto.randomUUID();
+    const normalized = normalizeMessage(event.message, runtime.activeMessageID, true);
+    if (normalized) send("runtime.event", { sessionID: ctx.sessionManager.getSessionId(), event: normalized });
+  });
+  pi.on("message_update", async (event, ctx) => {
+    runtime.activeMessageID ??= crypto.randomUUID();
+    const normalized = normalizeMessage(event.message, runtime.activeMessageID, true);
+    if (normalized) send("runtime.event", { sessionID: ctx.sessionManager.getSessionId(), event: normalized });
+  });
+  pi.on("tool_execution_start", async (event, ctx) => {
+    const normalized = normalizeToolEvent(event);
+    if (normalized) send("runtime.event", { sessionID: ctx.sessionManager.getSessionId(), event: normalized });
+  });
+  pi.on("tool_execution_update", async (event, ctx) => {
+    const normalized = normalizeToolEvent(event);
+    if (normalized) send("runtime.event", { sessionID: ctx.sessionManager.getSessionId(), event: normalized });
+  });
+  pi.on("tool_execution_end", async (event, ctx) => {
+    const normalized = normalizeToolEvent(event);
+    if (normalized) send("runtime.event", { sessionID: ctx.sessionManager.getSessionId(), event: normalized });
+  });
+  pi.on("message_end", async (event, ctx) => {
+    runtime.activeMessageID ??= crypto.randomUUID();
+    const normalized = normalizeMessage(event.message, runtime.activeMessageID, false);
+    if (normalized) send("runtime.event", { sessionID: ctx.sessionManager.getSessionId(), event: normalized });
+    runtime.activeMessageID = undefined;
+  });
   pi.on("agent_settled", async (_event, ctx) => { runtime.phase = "completed"; runtime.unread = true; send("runtime.session", { session: sessionSnapshot(ctx) }); });
   pi.on("session_shutdown", async () => { if (runtime.reconnect) clearTimeout(runtime.reconnect); runtime.socket?.close(); });
 }

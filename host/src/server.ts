@@ -9,9 +9,12 @@ const host = process.env.VIPI_HOST ?? "127.0.0.1";
 const port = Number(process.env.VIPI_PORT ?? "8765");
 const token = loadOrCreateToken();
 let sequence = 0;
+const replayLimit = Math.max(100, Number(process.env.VIPI_REPLAY_LIMIT ?? "1000"));
+const replayBuffer: Envelope[] = [];
 const mobileClients = new Set<WebSocket>();
 const runtimes = new Map<string, WebSocket>();
 const liveSessions = new Map<string, SessionRecord>();
+const pendingRequests = new Map<string, WebSocket>();
 
 const server = createServer((request, response) => {
   if (request.url === "/health") {
@@ -37,8 +40,14 @@ wss.on("connection", (socket) => {
     if (role === "unknown") {
       if (message.type === "auth.authenticate" && tokenMatches(token, message.payload?.token)) {
         role = "mobile"; mobileClients.add(socket); clearTimeout(authTimer);
+        const lastSeq = typeof message.payload?.lastSeq === "number" ? message.payload.lastSeq : undefined;
         socket.send(JSON.stringify(envelope("auth.ok", { role }, message.id, ++sequence)));
-        socket.send(JSON.stringify(envelope("sessions.snapshot", { sessions: mergedSessions() }, undefined, ++sequence)));
+        const oldestSeq = replayBuffer[0]?.seq ?? sequence;
+        if (lastSeq !== undefined && lastSeq >= oldestSeq - 1) {
+          for (const item of replayBuffer) if ((item.seq ?? 0) > lastSeq) socket.send(JSON.stringify(item));
+        } else {
+          socket.send(JSON.stringify(envelope("sessions.snapshot", { sessions: mergedSessions(), replayReset: lastSeq !== undefined }, undefined, ++sequence)));
+        }
         return;
       }
       if (message.type === "runtime.register" && tokenMatches(token, message.payload?.token)) {
@@ -56,6 +65,13 @@ wss.on("connection", (socket) => {
         const session = message.payload.session as unknown as SessionRecord;
         if (session?.id) liveSessions.set(session.id, session);
         broadcast("sessions.snapshot", { sessions: mergedSessions() });
+      } else if (message.type === "runtime.response") {
+        const requestID = typeof message.payload.requestID === "string" ? message.payload.requestID : undefined;
+        const requester = requestID ? pendingRequests.get(requestID) : undefined;
+        if (requester?.readyState === WebSocket.OPEN) {
+          requester.send(JSON.stringify(envelope("session.response", message.payload, requestID, ++sequence)));
+        }
+        if (requestID) pendingRequests.delete(requestID);
       } else if (message.type.startsWith("runtime.")) {
         broadcast(message.type.replace("runtime.", "session."), message.payload);
       }
@@ -73,11 +89,13 @@ wss.on("connection", (socket) => {
       socket.send(JSON.stringify(envelope("error", { code: "SESSION_OFFLINE", sessionID }, message.id, ++sequence)));
       return;
     }
+    if (message.id) pendingRequests.set(message.id, socket);
     runtime.send(JSON.stringify(message));
   });
 
   socket.on("close", () => {
     clearTimeout(authTimer); mobileClients.delete(socket);
+    for (const [requestID, requester] of pendingRequests) if (requester === socket) pendingRequests.delete(requestID);
     if (runtimeSessionID && runtimes.get(runtimeSessionID) === socket) {
       runtimes.delete(runtimeSessionID);
       const session = liveSessions.get(runtimeSessionID);
@@ -94,7 +112,10 @@ function mergedSessions(): SessionRecord[] {
 }
 
 function broadcast(type: string, payload: unknown): void {
-  const data = JSON.stringify(envelope(type, payload, undefined, ++sequence));
+  const item = envelope(type, payload, undefined, ++sequence);
+  replayBuffer.push(item);
+  if (replayBuffer.length > replayLimit) replayBuffer.splice(0, replayBuffer.length - replayLimit);
+  const data = JSON.stringify(item);
   for (const client of mobileClients) if (client.readyState === WebSocket.OPEN) client.send(data);
 }
 
