@@ -13,6 +13,10 @@ actor BrokerClient {
     private(set) var state: State = .disconnected
     var onEnvelope: (@Sendable (ServerEnvelope) async -> Void)?
 
+    init(reconnectHost: String? = nil, token: String? = nil) {
+        if let reconnectHost, let token { credentials = (reconnectHost, token) }
+    }
+
     func connect(host: String, token: String) async throws {
         disconnect(preservingCredentials: true)
         credentials = (host, token)
@@ -34,6 +38,13 @@ actor BrokerClient {
         try await send(type: "auth.authenticate", payload: AuthenticatePayload(token: token, lastSeq: lastSeq))
         receiveTask = Task { [weak self] in await self?.receiveLoop() }
     }
+
+    func updateToken(_ token: String) {
+        guard let credentials else { return }
+        self.credentials = (credentials.host, token)
+    }
+
+    func reconnectTokenForTesting() -> String? { credentials?.token }
 
     func disconnect() {
         shouldReconnect = false

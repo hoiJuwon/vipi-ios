@@ -15,11 +15,12 @@ final class AppStore {
     var showingSettings = false
     var activityItems = MockData.activity
 
-    private let broker = BrokerClient()
+    private let broker: BrokerClient
     private var lastEntryBySession: [String: String] = [:]
     private var pendingHistoryRequests: [String: String] = [:]
 
-    init() {
+    init(broker: BrokerClient = BrokerClient()) {
+        self.broker = broker
         if CommandLine.arguments.contains("--uitesting"),
            let fixture = ProcessInfo.processInfo.environment["VIPI_E2E_PAIRING"],
            let data = fixture.data(using: .utf8),
@@ -194,7 +195,7 @@ final class AppStore {
         messagesBySession[sessionID, default: []].append(pending)
     }
 
-    func handle(_ envelope: ServerEnvelope) {
+    func handle(_ envelope: ServerEnvelope) async {
         // Typed event reducers are intentionally centralized here. The host
         // protocol can evolve without coupling wire payloads to SwiftUI views.
         if envelope.type == "auth.ok" {
@@ -207,6 +208,7 @@ final class AppStore {
            case .object(let payload) = envelope.payload,
            case .string(let rotatedToken) = payload["token"] {
             token = rotatedToken
+            await broker.updateToken(rotatedToken)
             try? KeychainStore.saveToken(rotatedToken)
             return
         }
