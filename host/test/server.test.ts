@@ -133,3 +133,44 @@ test("replays missed normalized runtime events from a sequence cursor", async ()
   resumed.close();
   runtime.close();
 });
+
+test("routes prompt modes, abort, history, responses, and tool events", async () => {
+  const runtime = await connect();
+  send(runtime, "runtime.register", { token, session: {
+    id: "controls", name: "Controls", cwd: "/tmp/controls", phase: "working", unread: false,
+    lastActivityAt: new Date().toISOString(), model: "Pi", thinkingLevel: "medium", contextPercent: 10,
+    tmux: { session: "controls", window: "1", paneID: "%2" },
+  } });
+  const mobile = await connect();
+  send(mobile, "auth.authenticate", { token }, "controls-auth");
+  await receive(mobile);
+  await receive(mobile);
+
+  for (const [index, command] of [
+    ["session.prompt", { sessionID: "controls", text: "prompt", delivery: "prompt" }],
+    ["session.prompt", { sessionID: "controls", text: "steer", delivery: "steer" }],
+    ["session.prompt", { sessionID: "controls", text: "follow", delivery: "followUp" }],
+    ["session.abort", { sessionID: "controls" }],
+    ["session.history", { sessionID: "controls", afterEntryID: "entry-1" }],
+  ].entries()) {
+    const id = `request-${index}`;
+    send(mobile, command[0] as string, command[1] as object, id);
+    const forwarded = await receive(runtime);
+    assert.equal(forwarded.type, command[0]);
+    assert.equal(forwarded.id, id);
+    send(runtime, "runtime.response", { requestID: id, ok: true, result: command[0] === "session.history" ? { events: [], lastEntryID: "entry-2" } : undefined });
+    const response = await receive(mobile);
+    assert.equal(response.type, "session.response");
+    assert.equal(response.id, id);
+    assert.equal(response.payload.ok, true);
+  }
+
+  send(runtime, "runtime.event", { sessionID: "controls", event: {
+    kind: "tool", toolCallID: "tool-1", name: "read", state: "running", summary: "read running",
+  } });
+  const tool = await receive(mobile);
+  assert.equal(tool.type, "session.event");
+  assert.equal(tool.payload.event.kind, "tool");
+  mobile.close();
+  runtime.close();
+});
