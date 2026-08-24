@@ -13,6 +13,7 @@
 		188A110E5F62E54930B428E5 /* ActivityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3FD97EC8475EDE216CB59E0 /* ActivityView.swift */; };
 		2BF9CF22338B79464BA39B4B /* ChatModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72FF8640084103979F5F7473 /* ChatModels.swift */; };
 		414A19E6F40D0DD5740CEF81 /* VipiApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75B5AAF1B02E8D14B6D7E61F /* VipiApp.swift */; };
+		4E82335184F1D08DEB7A7E64 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A1E79DF96186F6A5F9D412D /* KeychainStore.swift */; };
 		568FD418BC3F3A8E3D82DEFE /* StatusPill.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51A56E1D0C45CB92DB1FFCDC /* StatusPill.swift */; };
 		679B4EF0DAE79E70208BCBE2 /* SessionModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6246E1CE326A44F6EF0041CB /* SessionModels.swift */; };
 		680465B91548F84E8AB85B56 /* SessionModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 662425F04AF7242E508F30CF /* SessionModelTests.swift */; };
@@ -41,6 +42,7 @@
 		0CFDFFA8E9005F6741B77885 /* Vipi.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Vipi.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1B65F32F13938396FA43217F /* AppStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStore.swift; sourceTree = "<group>"; };
 		257DD7057C41DF8DA0E70B76 /* VipiTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = VipiTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		3A1E79DF96186F6A5F9D412D /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 		3E239652719F5AEB87D138D0 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
 		4C7C821E21D70BBF06358AE6 /* MockData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockData.swift; sourceTree = "<group>"; };
 		51A56E1D0C45CB92DB1FFCDC /* StatusPill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusPill.swift; sourceTree = "<group>"; };
@@ -131,6 +133,7 @@
 				3800C896E9C514AF4298186D /* Features */,
 				00BEDA59768483376B9EB8C2 /* Models */,
 				2A1CBA5573E001778277255E /* Networking */,
+				DE9AAA2D3D7423D0A487ECCD /* Security */,
 				5FCB95B3845F9C5EBA217F9D /* Stores */,
 			);
 			path = Vipi;
@@ -186,6 +189,14 @@
 				AEA45577862E5D8092E1F11A /* VipiTheme.swift */,
 			);
 			path = DesignSystem;
+			sourceTree = "<group>";
+		};
+		DE9AAA2D3D7423D0A487ECCD /* Security */ = {
+			isa = PBXGroup;
+			children = (
+				3A1E79DF96186F6A5F9D412D /* KeychainStore.swift */,
+			);
+			path = Security;
 			sourceTree = "<group>";
 		};
 		DEA392FECC056D6CFFE2D0B5 /* Activity */ = {
@@ -282,6 +293,7 @@
 				2BF9CF22338B79464BA39B4B /* ChatModels.swift in Sources */,
 				A22F88C8554BCE2B0402AA63 /* ChatView.swift in Sources */,
 				14CAA51CFCBFFE50D7693061 /* ComposerView.swift in Sources */,
+				4E82335184F1D08DEB7A7E64 /* KeychainStore.swift in Sources */,
 				0E721E46F558E733E27EC66A /* MockData.swift in Sources */,
 				084869FCADA6F41FDBA35660 /* RootView.swift in Sources */,
 				88FA779657B240602FA9503C /* SessionListView.swift in Sources */,

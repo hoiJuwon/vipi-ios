@@ -17,6 +17,11 @@ final class AppStore {
 
     private let broker = BrokerClient()
 
+    init() {
+        token = KeychainStore.loadToken() ?? ""
+        host = UserDefaults.standard.string(forKey: "vipi.host") ?? ""
+    }
+
     var workspaceGroups: [WorkspaceGroup] {
         Dictionary(grouping: sessions, by: \.cwd)
             .map { WorkspaceGroup(path: $0.key, sessions: $0.value.sorted { $0.lastActivityAt > $1.lastActivityAt }) }
@@ -54,6 +59,27 @@ final class AppStore {
         sessions = MockData.sessions
         messagesBySession = MockData.messages
         connectionState = .demo
+    }
+
+    func pair(payload: String) throws {
+        guard let data = payload.data(using: .utf8) else { throw PairingError.invalidPayload }
+        let pairing = try JSONDecoder().decode(PairingPayload.self, from: data)
+        guard let components = URLComponents(string: pairing.host),
+              components.scheme == "https" || (components.scheme == "http" && components.host == "127.0.0.1"),
+              pairing.token.count >= 32 else { throw PairingError.invalidPayload }
+        host = pairing.host
+        token = pairing.token
+        UserDefaults.standard.set(host, forKey: "vipi.host")
+        try KeychainStore.saveToken(token)
+    }
+
+    func rotateToken() async {
+        guard connectionState == .connected else { return }
+        do {
+            try await broker.send(type: "auth.rotate", payload: EmptyPayload())
+        } catch {
+            connectionState = .disconnected(error.localizedDescription)
+        }
     }
 
     func send(text: String, to sessionID: String, delivery: PromptDelivery) async {
@@ -95,6 +121,15 @@ final class AppStore {
         // protocol can evolve without coupling wire payloads to SwiftUI views.
         if envelope.type == "auth.ok" {
             connectionState = .connected
+            UserDefaults.standard.set(host, forKey: "vipi.host")
+            try? KeychainStore.saveToken(token)
+            return
+        }
+        if envelope.type == "auth.rotated",
+           case .object(let payload) = envelope.payload,
+           case .string(let rotatedToken) = payload["token"] {
+            token = rotatedToken
+            try? KeychainStore.saveToken(rotatedToken)
             return
         }
         if envelope.type == "sessions.snapshot", let payload = envelope.payload {
@@ -115,6 +150,11 @@ private struct SessionSnapshot: Decodable {
 }
 
 private struct EmptyPayload: Encodable {}
+
+enum PairingError: LocalizedError {
+    case invalidPayload
+    var errorDescription: String? { "The pairing payload is invalid or not secure." }
+}
 
 extension BrokerClient {
     func setEnvelopeHandler(_ handler: @escaping @Sendable (ServerEnvelope) async -> Void) {
