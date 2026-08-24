@@ -71,21 +71,60 @@ export function normalizeToolEvent(eventValue: unknown, entryID?: string): Norma
   };
 }
 
+function normalizeHistoryMessage(messageValue: unknown, entryID: string, index: number): NormalizedSessionEvent[] {
+  const message = record(messageValue);
+  if (!message) return [];
+  if (message.role === "toolResult") {
+    const toolCallID = message.toolCallId;
+    const name = message.toolName;
+    if (typeof toolCallID !== "string" || typeof name !== "string") return [];
+    return [{
+      kind: "tool",
+      toolCallID,
+      name,
+      state: message.isError === true ? "failed" : "succeeded",
+      summary: message.isError === true ? `${name} failed` : `${name} completed`,
+      ...(safeDetail(textContent(message.content)) ? { detail: safeDetail(textContent(message.content)) } : {}),
+      entryID,
+    }];
+  }
+
+  const events: NormalizedSessionEvent[] = [];
+  const normalized = normalizeMessage(message, entryID || `history-${index}`, false, entryID);
+  if (normalized) events.push(normalized);
+  if (message.role === "assistant" && Array.isArray(message.content)) {
+    for (const partValue of message.content) {
+      const part = record(partValue);
+      if (part?.type !== "toolCall" || typeof part.id !== "string" || typeof part.name !== "string") continue;
+      events.push({
+        kind: "tool",
+        toolCallID: part.id,
+        name: part.name,
+        state: "running",
+        summary: `${part.name} running`,
+        ...(safeDetail(part.arguments) ? { detail: safeDetail(part.arguments) } : {}),
+        entryID,
+      });
+    }
+  }
+  return events;
+}
+
 export function normalizeHistory(entriesValue: unknown, afterEntryID?: string): { events: NormalizedSessionEvent[]; lastEntryID?: string } {
   if (!Array.isArray(entriesValue)) return { events: [] };
   const entries = entriesValue.map(record).filter((entry): entry is UnknownRecord => Boolean(entry));
-  const start = afterEntryID ? entries.findIndex((entry) => entry.id === afterEntryID) + 1 : 0;
-  const selected = afterEntryID && start === 0 ? entries : entries.slice(start);
+  const cursorIndex = afterEntryID ? entries.findIndex((entry) => entry.id === afterEntryID) : -1;
+  const selected = afterEntryID && cursorIndex >= 0 ? entries.slice(cursorIndex + 1) : entries;
   const events: NormalizedSessionEvent[] = [];
-  for (const entry of selected) {
-    const entryID = typeof entry.id === "string" ? entry.id : undefined;
+  for (const [index, entry] of selected.entries()) {
+    const entryID = typeof entry.id === "string" ? entry.id : `history-entry-${index}`;
     if (entry.type === "message") {
-      const normalized = normalizeMessage(entry.message, entryID ?? `history-${events.length}`, false, entryID);
-      if (normalized) events.push(normalized);
+      events.push(...normalizeHistoryMessage(entry.message, entryID, index));
       continue;
     }
-    const tool = normalizeToolEvent(entry, entryID);
-    if (tool) events.push(tool);
+    if ((entry.type === "compaction" || entry.type === "branch_summary") && typeof entry.summary === "string") {
+      events.push({ kind: "message", messageID: entryID, role: "system", text: entry.summary, timestamp: timestamp(entry.timestamp), streaming: false, entryID });
+    }
   }
   const last = entries.at(-1)?.id;
   return { events, ...(typeof last === "string" ? { lastEntryID: last } : {}) };

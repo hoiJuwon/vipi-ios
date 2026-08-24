@@ -101,12 +101,22 @@ test("normalizes message, tool, and incremental branch history", () => {
   assert.equal(tool?.kind, "tool");
   assert.equal(tool?.kind === "tool" ? tool.state : undefined, "succeeded");
   const history = normalizeHistory([
-    { id: "e1", type: "message", message: { role: "user", content: "first", timestamp: 1 } },
-    { id: "e2", type: "message", message: { role: "assistant", content: [{ type: "text", text: "second" }], timestamp: 2 } },
+    { id: "e1", parentId: null, timestamp: "2026-08-24T00:00:00Z", type: "message", message: { role: "user", content: "first", timestamp: 1 } },
+    { id: "e2", parentId: "e1", timestamp: "2026-08-24T00:00:01Z", type: "message", message: {
+      role: "assistant", timestamp: 2, api: "anthropic-messages", provider: "anthropic", model: "test", stopReason: "toolUse",
+      usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+      content: [{ type: "text", text: "second" }, { type: "toolCall", id: "call-1", name: "read", arguments: { path: "README.md" } }],
+    } },
+    { id: "e3", parentId: "e2", timestamp: "2026-08-24T00:00:02Z", type: "message", message: {
+      role: "toolResult", toolCallId: "call-1", toolName: "read", content: [{ type: "text", text: "file body" }], isError: false, timestamp: 3,
+    } },
   ], "e1");
-  assert.equal(history.events.length, 1);
-  assert.equal(history.events[0]?.entryID, "e2");
-  assert.equal(history.lastEntryID, "e2");
+  assert.equal(history.events.length, 3);
+  assert.deepEqual(history.events.map((event) => event.kind), ["message", "tool", "tool"]);
+  assert.equal(history.events[1]?.entryID, "e2");
+  assert.equal(history.events[2]?.entryID, "e3");
+  assert.equal(history.events[2]?.kind === "tool" ? history.events[2].state : undefined, "succeeded");
+  assert.equal(history.lastEntryID, "e3");
 });
 
 test("replays missed normalized runtime events from a sequence cursor", async () => {
