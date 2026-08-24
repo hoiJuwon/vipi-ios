@@ -17,7 +17,11 @@ struct TailscaleEndpoint: Equatable, Sendable {
         }
 
         let isTailnetHTTPS = scheme == "https" && hostname.hasSuffix(".ts.net")
+        #if DEBUG
         let isUITestLocalhost = allowsInsecureLocalhostForUITesting && scheme == "http" && hostname == "127.0.0.1"
+        #else
+        let isUITestLocalhost = false
+        #endif
         guard isTailnetHTTPS || isUITestLocalhost else { throw EndpointError.insecure }
 
         components.path = ""
