@@ -20,6 +20,7 @@ struct SettingsView: View {
             }
             Section("Pair device") {
                 SecureField("Paste pairing payload", text: $pairingPayload)
+                    .accessibilityIdentifier("settings.pairingPayload")
                     .textInputAutocapitalization(.never)
                     .privacySensitive()
                 Button("Import pairing payload", systemImage: "qrcode") {
@@ -32,23 +33,29 @@ struct SettingsView: View {
                     }
                 }
                 .disabled(pairingPayload.isEmpty)
+                .accessibilityIdentifier("settings.importPairing")
                 if let pairingError {
                     Text(pairingError).font(.caption).foregroundStyle(VipiTheme.danger)
                 }
             }
             Section("Tailnet host") {
                 TextField("https://host.tailnet.ts.net", text: $store.host)
+                    .accessibilityIdentifier("settings.host")
                     .textInputAutocapitalization(.never).keyboardType(.URL)
-                SecureField("Device token", text: $store.token).privacySensitive()
+                SecureField("Device token", text: $store.token)
+                    .accessibilityIdentifier("settings.token")
+                    .privacySensitive()
                 Button {
                     Task { await store.connect() }
                 } label: {
                     HStack { Spacer(); if store.connectionState == .connecting { ProgressView().padding(.trailing, 6) }; Text("Connect securely"); Spacer() }
                 }
+                .accessibilityIdentifier("settings.connect")
                 Button("Rotate device token", systemImage: "arrow.triangle.2.circlepath") {
                     Task { await store.rotateToken() }
                 }
                 .disabled(store.connectionState != .connected)
+                .accessibilityIdentifier("settings.rotateToken")
                 Button("Use demo data") { store.useDemoMode() }.foregroundStyle(VipiTheme.warning)
             }
             Section("Connection") {

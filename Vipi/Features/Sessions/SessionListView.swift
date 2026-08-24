@@ -84,6 +84,7 @@ struct SessionListView: View {
                 ForEach(Array(group.sessions.enumerated()), id: \.element.id) { index, session in
                     NavigationLink(value: session) { SessionRow(session: session) }
                         .buttonStyle(.plain)
+                        .accessibilityIdentifier("session.\(session.id)")
                     if index < group.sessions.count - 1 {
                         Divider().overlay(VipiTheme.stroke).padding(.leading, 58)
                     }

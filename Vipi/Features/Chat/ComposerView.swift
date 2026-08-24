@@ -26,6 +26,7 @@ struct ComposerView: View {
                 }
                 .foregroundStyle(VipiTheme.primary)
                 TextField("Message Pi…", text: $draft, axis: .vertical)
+                    .accessibilityIdentifier("chat.composer")
                     .lineLimit(1...6)
                     .padding(.horizontal, 14).padding(.vertical, 11)
                     .vipiGlass(interactive: true, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
@@ -40,6 +41,7 @@ struct ComposerView: View {
                         )
                 }
                 .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .accessibilityIdentifier("chat.send")
             }
         }
         .padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 8)

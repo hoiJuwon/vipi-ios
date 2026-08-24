@@ -36,6 +36,7 @@ struct ChatView: View {
                     Button("Stop current run", systemImage: "stop.circle", role: .destructive) {
                         Task { await store.abort(sessionID: sessionID) }
                     }
+                    .accessibilityIdentifier("chat.abort")
                 } label: {
                     Image(systemName: "ellipsis")
                         .frame(width: 34, height: 34)
@@ -65,6 +66,7 @@ struct ChatView: View {
                 .padding(.vertical, 18)
             }
             .scrollDismissesKeyboard(.interactively)
+            .accessibilityIdentifier("chat.transcript")
             .onChange(of: store.messages(for: sessionID).count) {
                 withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
             }
