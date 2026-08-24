@@ -38,6 +38,13 @@ final class SessionModelTests: XCTestCase {
         store.commandError = nil
         await store.compact(sessionID: "mobile")
         XCTAssertNotNil(store.commandError)
+        store.commandError = nil
+        let rejected = try! JSONDecoder().decode(
+            ServerEnvelope.self,
+            from: Data(#"{"id":"command","type":"session.response","payload":{"requestID":"command","ok":false,"result":{"error":"runtime rejected"}}}"#.utf8)
+        )
+        await store.handle(rejected)
+        XCTAssertEqual(store.commandError, "runtime rejected")
     }
 
     @MainActor func testTokenRotationUpdatesReconnectCredentialsBeforeReturning() async throws {

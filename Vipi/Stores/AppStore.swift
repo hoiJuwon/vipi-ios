@@ -254,9 +254,19 @@ final class AppStore {
             reduceSessionEvent(payload)
             return
         }
-        if envelope.type == "session.response", let id = envelope.id, let payload = envelope.payload,
-           let sessionID = pendingHistoryRequests.removeValue(forKey: id) {
-            reduceHistoryResponse(payload, sessionID: sessionID)
+        if envelope.type == "session.response", let payload = envelope.payload {
+            if case .object(let response) = payload,
+               case .bool(false) = response["ok"] {
+                if case .object(let result) = response["result"],
+                   case .string(let error) = result["error"] {
+                    commandError = error
+                } else {
+                    commandError = "The host rejected the command."
+                }
+            }
+            if let id = envelope.id, let sessionID = pendingHistoryRequests.removeValue(forKey: id) {
+                reduceHistoryResponse(payload, sessionID: sessionID)
+            }
             return
         }
         if envelope.type == "error", case .object(let payload) = envelope.payload,
