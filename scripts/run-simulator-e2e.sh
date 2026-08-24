@@ -25,4 +25,4 @@ VIPI_FIXTURE_TOKEN="$TOKEN" VIPI_PORT=$PORT node --import tsx host/test/fixture-
 RUNTIME_PID=$!
 sleep 0.5
 DESTINATION=${VIPI_TEST_DESTINATION:-platform=iOS Simulator,name=Vipi iPhone}
-xcodebuild -project Vipi.xcodeproj -scheme Vipi -destination "$DESTINATION" CODE_SIGNING_ALLOWED=NO test
+xcodebuild -project Vipi.xcodeproj -scheme Vipi -destination "$DESTINATION" test
