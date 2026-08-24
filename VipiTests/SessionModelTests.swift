@@ -69,5 +69,6 @@ final class SessionModelTests: XCTestCase {
         XCTAssertEqual(store.host, "https://mac.example.ts.net")
         XCTAssertEqual(KeychainStore.loadToken(), token)
         XCTAssertThrowsError(try store.pair(payload: #"{"host":"http://public.example.com","token":"\#(token)"}"#))
+        XCTAssertThrowsError(try store.pair(payload: #"{"host":"https://public.example.com","token":"\#(token)"}"#))
     }
 }

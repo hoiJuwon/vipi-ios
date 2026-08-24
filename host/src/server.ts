@@ -4,6 +4,7 @@ import qrcode from "qrcode-terminal";
 import { envelope, PROTOCOL_VERSION, type Envelope, type SessionRecord } from "./protocol.js";
 import { loadOrCreateToken, rotateToken, tokenMatches, tokenPath } from "./token.js";
 import { readTmuxRegistry } from "./registry.js";
+import { createPairingPayload } from "./pairing.js";
 
 const host = process.env.VIPI_HOST ?? "127.0.0.1";
 const port = Number(process.env.VIPI_PORT ?? "8765");
@@ -12,6 +13,9 @@ if (!loopbackHosts.has(host) && process.env.VIPI_ALLOW_NON_LOOPBACK !== "1") {
   throw new Error("Refusing non-loopback bind; publish 127.0.0.1 through Tailscale Serve instead");
 }
 let token = loadOrCreateToken();
+const pairingPayload = process.env.VIPI_SHOW_PAIRING_QR === "1"
+  ? createPairingPayload(process.env.VIPI_PUBLIC_URL, token)
+  : undefined;
 let sequence = 0;
 const replayLimit = Math.max(100, Number(process.env.VIPI_REPLAY_LIMIT ?? "1000"));
 const replayBuffer: Envelope[] = [];
@@ -143,8 +147,8 @@ server.listen(port, host, () => {
   console.log(`Vipi host listening on ${local}`);
   console.log(`Authentication token stored at ${tokenPath}`);
   console.log(`Tailscale: tailscale serve --bg ${local}`);
-  if (process.env.VIPI_SHOW_PAIRING_QR === "1") {
-    console.warn("Pairing QR contains a bearer secret; scan it privately and clear this terminal afterward.");
-    qrcode.generate(JSON.stringify({ host: local, token }), { small: true });
+  if (pairingPayload) {
+    console.warn(`Pairing for ${pairingPayload.host}. The QR contains a bearer secret; scan it privately and clear this terminal afterward.`);
+    qrcode.generate(JSON.stringify(pairingPayload), { small: true });
   }
 });

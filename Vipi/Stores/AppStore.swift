@@ -75,7 +75,11 @@ final class AppStore {
         guard let data = payload.data(using: .utf8) else { throw PairingError.invalidPayload }
         let pairing = try JSONDecoder().decode(PairingPayload.self, from: data)
         guard let components = URLComponents(string: pairing.host),
-              components.scheme == "https" || (components.scheme == "http" && components.host == "127.0.0.1"),
+              let hostname = components.host?.lowercased(),
+              (components.scheme == "https" && hostname.hasSuffix(".ts.net")) ||
+                (components.scheme == "http" && hostname == "127.0.0.1"),
+              components.user == nil, components.password == nil,
+              components.query == nil, components.fragment == nil,
               pairing.token.count >= 32 else { throw PairingError.invalidPayload }
         host = pairing.host
         token = pairing.token

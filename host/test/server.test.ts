@@ -8,6 +8,7 @@ import { after, before, test } from "node:test";
 import WebSocket from "ws";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { normalizeHistory, normalizeMessage, normalizeToolEvent } from "../src/normalization.js";
+import { createPairingPayload } from "../src/pairing.js";
 
 const protocolVersion = 1;
 let child: ChildProcess;
@@ -90,6 +91,15 @@ before(async () => {
 after(async () => {
   child.kill("SIGTERM");
   await rm(directory, { recursive: true, force: true });
+});
+
+test("creates pairing payloads only for public HTTPS Tailscale hosts", () => {
+  assert.deepEqual(createPairingPayload("https://vipi-mac.example-tailnet.ts.net/", "token"), {
+    host: "https://vipi-mac.example-tailnet.ts.net", token: "token",
+  });
+  assert.throws(() => createPairingPayload(undefined, "token"), /VIPI_PUBLIC_URL is required/);
+  assert.throws(() => createPairingPayload("http://127.0.0.1:8765", "token"), /HTTPS/);
+  assert.throws(() => createPairingPayload("https://public.example.com", "token"), /.ts.net/);
 });
 
 test("normalizes message, tool, and incremental branch history", () => {

@@ -105,7 +105,14 @@ tailscale serve status
 tailscale status
 ```
 
-For QR pairing, stop any unattended terminal recording and run `VIPI_SHOW_PAIRING_QR=1 npm run host`; the QR is a bearer secret. Token rotation is available to an authenticated app and atomically replaces the token, revoking other mobile connections.
+For QR pairing, first use the HTTPS `.ts.net` URL shown by `tailscale serve status`, stop any unattended terminal recording, then run:
+
+```bash
+VIPI_PUBLIC_URL=https://mac-studio.your-tailnet.ts.net \
+VIPI_SHOW_PAIRING_QR=1 npm run host
+```
+
+The host refuses to emit a QR without a public HTTPS `.ts.net` URL and never encodes its loopback listener as the phone destination. The QR is a bearer secret. Token rotation is available to an authenticated app and atomically replaces the token, revoking other mobile connections.
 
 ## Run at login with launchd
 
