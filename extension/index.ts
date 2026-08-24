@@ -17,10 +17,11 @@ type RuntimeState = {
   phase: string;
   unread: boolean;
   activeMessageID?: string;
+  disposed: boolean;
 };
 
 export default function vipiBridge(pi: ExtensionAPI) {
-  const runtime: RuntimeState = { phase: "idle", unread: false };
+  const runtime: RuntimeState = { phase: "idle", unread: false, disposed: false };
 
   function sessionSnapshot(ctx: ExtensionContext) {
     const sessionID = ctx.sessionManager.getSessionId();
@@ -61,17 +62,35 @@ export default function vipiBridge(pi: ExtensionAPI) {
   }
 
   function connect(ctx: ExtensionContext) {
+    if (runtime.disposed) return;
     runtime.ctx = ctx;
     if (runtime.socket && runtime.socket.readyState <= WebSocket.OPEN) return;
     let token: string;
     try { token = readFileSync(tokenPath, "utf8").trim(); } catch { return; }
     const socket = new WebSocket(brokerURL, { maxPayload: 512 * 1024 });
     runtime.socket = socket;
-    socket.on("open", () => send("runtime.register", { token, session: sessionSnapshot(ctx) }));
-    socket.on("message", (raw) => void handleCommand(JSON.parse(raw.toString()) as { id?: string; type: string; payload?: Record<string, unknown> }));
+    socket.on("open", () => {
+      if (runtime.disposed || runtime.socket !== socket || runtime.ctx !== ctx) {
+        socket.close();
+        return;
+      }
+      send("runtime.register", { token, session: sessionSnapshot(ctx) });
+    });
+    socket.on("message", (raw) => {
+      if (runtime.disposed || runtime.socket !== socket) return;
+      try {
+        void handleCommand(JSON.parse(raw.toString()) as { id?: string; type: string; payload?: Record<string, unknown> });
+      } catch {
+        socket.close(4002, "invalid broker message");
+      }
+    });
     socket.on("close", () => {
-      runtime.socket = undefined;
-      runtime.reconnect = setTimeout(() => runtime.ctx && connect(runtime.ctx), 2000);
+      if (runtime.socket === socket) runtime.socket = undefined;
+      if (runtime.disposed) return;
+      runtime.reconnect = setTimeout(() => {
+        const activeContext = runtime.ctx;
+        if (!runtime.disposed && activeContext) connect(activeContext);
+      }, 2000);
       runtime.reconnect.unref?.();
     });
     socket.on("error", () => {});
@@ -99,7 +118,7 @@ export default function vipiBridge(pi: ExtensionAPI) {
     } catch (error) { reply(false, { error: error instanceof Error ? error.message : String(error) }); }
   }
 
-  pi.on("session_start", async (_event, ctx) => { runtime.phase = "idle"; connect(ctx); send("runtime.session", { session: sessionSnapshot(ctx) }); });
+  pi.on("session_start", async (_event, ctx) => { runtime.disposed = false; runtime.phase = "idle"; connect(ctx); send("runtime.session", { session: sessionSnapshot(ctx) }); });
   pi.on("session_info_changed", async (_event, ctx) => send("runtime.session", { session: sessionSnapshot(ctx) }));
   pi.on("agent_start", async (_event, ctx) => { runtime.phase = "working"; runtime.unread = false; send("runtime.session", { session: sessionSnapshot(ctx) }); });
   pi.on("message_start", async (event, ctx) => {
@@ -134,5 +153,14 @@ export default function vipiBridge(pi: ExtensionAPI) {
     runtime.activeMessageID = undefined;
   });
   pi.on("agent_settled", async (_event, ctx) => { runtime.phase = "completed"; runtime.unread = true; send("runtime.session", { session: sessionSnapshot(ctx) }); });
-  pi.on("session_shutdown", async () => { if (runtime.reconnect) clearTimeout(runtime.reconnect); runtime.socket?.close(); });
+  pi.on("session_shutdown", async () => {
+    runtime.disposed = true;
+    runtime.ctx = undefined;
+    if (runtime.reconnect) clearTimeout(runtime.reconnect);
+    runtime.reconnect = undefined;
+    const socket = runtime.socket;
+    runtime.socket = undefined;
+    socket?.removeAllListeners();
+    socket?.close();
+  });
 }
