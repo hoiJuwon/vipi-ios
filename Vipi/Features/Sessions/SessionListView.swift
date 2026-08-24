@@ -2,39 +2,48 @@ import SwiftUI
 
 struct SessionListView: View {
     @Environment(AppStore.self) private var store
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var searchText = ""
 
     var body: some View {
         ZStack {
             VipiBackdrop()
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 22) {
-                    hero
-                    if filteredGroups.isEmpty {
-                        ContentUnavailableView(
-                            "No paired sessions",
-                            systemImage: "lock.shield",
-                            description: Text("Open Settings to pair your Tailscale host, or explicitly choose demo data.")
-                        )
-                        .accessibilityIdentifier("sessions.empty")
+            if filteredSessions.isEmpty {
+                emptyState
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(Array(filteredSessions.enumerated()), id: \.element.id) { index, session in
+                            NavigationLink(value: session) {
+                                SessionRow(
+                                    session: session,
+                                    preview: preview(for: session)
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("session.\(session.id)")
+                            .accessibilityLabel(session.name)
+                            .accessibilityValue(accessibilityValue(for: session))
+                            .accessibilityHint("Opens the session transcript")
+
+                            if index < filteredSessions.count - 1 {
+                                Divider()
+                                    .overlay(VipiTheme.stroke.opacity(0.7))
+                                    .padding(.horizontal, 16)
+                            }
+                        }
                     }
-                    ForEach(filteredGroups) { group in
-                        workspaceSection(group)
-                    }
-                    Color.clear.frame(height: 16)
                 }
-                .padding(.horizontal, 16)
+                .refreshable { await store.connect() }
             }
-            .refreshable { await store.connect() }
         }
-        .navigationTitle("Vipi")
+        .navigationTitle("Sessions")
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $searchText, prompt: "Search sessions")
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 HStack(spacing: 8) {
-                    Image(systemName: "circle.hexagongrid.fill").foregroundStyle(VipiTheme.accent)
+                    Image(systemName: "circle.hexagongrid.fill")
+                        .foregroundStyle(VipiTheme.accent)
                     ConnectionCapsule(state: store.connectionState)
                 }
                 .padding(.horizontal, 11)
@@ -44,122 +53,142 @@ struct SessionListView: View {
         }
     }
 
-    private var hero: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Your Pi sessions")
-                .font(.system(size: 28, weight: .bold, design: .rounded))
-            Text("Pick up any tmux session without leaving the conversation.")
-                .font(.subheadline)
-                .foregroundStyle(VipiTheme.secondary)
-            Group {
-                if dynamicTypeSize.isAccessibilitySize {
-                    VStack(alignment: .leading, spacing: 8) {
-                        metric("\(store.sessions.filter { $0.phase == .working }.count)", "running")
-                        metric("\(store.sessions.filter(\.unread).count)", "unread")
-                        metric("\(store.workspaceGroups.count)", "workspaces")
-                    }
-                } else {
-                    HStack(spacing: 16) {
-                        metric("\(store.sessions.filter { $0.phase == .working }.count)", "running")
-                        metric("\(store.sessions.filter(\.unread).count)", "unread")
-                        metric("\(store.workspaceGroups.count)", "workspaces")
-                    }
-                }
-            }
-            .padding(.top, 4)
-        }
-        .padding(.top, 14)
-    }
-
-    private func metric(_ value: String, _ label: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 5) {
-            Text(value).font(.title3.bold()).foregroundStyle(VipiTheme.primary)
-            Text(label).font(.caption).foregroundStyle(VipiTheme.secondary)
+    @ViewBuilder
+    private var emptyState: some View {
+        if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            ContentUnavailableView(
+                "No paired sessions",
+                systemImage: "lock.shield",
+                description: Text("Open Settings to pair your Tailscale host, or explicitly choose demo data.")
+            )
+            .accessibilityIdentifier("sessions.empty")
+        } else {
+            ContentUnavailableView.search(text: searchText)
         }
     }
 
-    private func workspaceSection(_ group: WorkspaceGroup) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Image(systemName: "folder.fill").foregroundStyle(VipiTheme.secondary)
-                Text(URL(fileURLWithPath: group.path).lastPathComponent)
-                    .font(.subheadline.weight(.semibold))
-                Spacer()
-                Text("\(group.sessions.count)")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(VipiTheme.secondary)
-            }
-            .padding(.horizontal, 4)
+    private var filteredSessions: [RemoteSession] {
+        let sorted = store.sessions.sorted { $0.lastActivityAt > $1.lastActivityAt }
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return sorted }
+        return sorted.filter { SessionListSearch.matches($0, query: query) }
+    }
 
-            VStack(spacing: 0) {
-                ForEach(Array(group.sessions.enumerated()), id: \.element.id) { index, session in
-                    NavigationLink(value: session) { SessionRow(session: session) }
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("session.\(session.id)")
-                        .accessibilityLabel(session.name)
-                        .accessibilityValue("\(session.phase.label), \(session.model)\(session.unread ? ", unread" : "")")
-                        .accessibilityHint("Opens the session transcript")
-                    if index < group.sessions.count - 1 {
-                        Divider().overlay(VipiTheme.stroke).padding(.leading, 58)
-                    }
-                }
+    private func preview(for session: RemoteSession) -> String {
+        switch session.phase {
+        case .working:
+            return "응답을 생성하고 있어요…"
+        case .waitingForInput:
+            return "응답이 필요해요"
+        case .failed:
+            return "작업 중 오류가 발생했어요"
+        case .offline:
+            return "오프라인"
+        case .idle, .completed:
+            if let text = store.messages(for: session.id).last?.text,
+               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return text.replacingOccurrences(of: "\n", with: " ")
             }
-            .vipiCard()
+            return session.phase == .completed ? "작업이 완료됐어요" : "새 메시지를 보내보세요"
         }
     }
 
-    private var filteredGroups: [WorkspaceGroup] {
-        guard !searchText.isEmpty else { return store.workspaceGroups }
-        return store.workspaceGroups.compactMap { group in
-            let sessions = group.sessions.filter {
-                $0.name.localizedCaseInsensitiveContains(searchText) ||
-                $0.cwd.localizedCaseInsensitiveContains(searchText)
-            }
-            return sessions.isEmpty ? nil : WorkspaceGroup(path: group.path, sessions: sessions)
-        }
+    private func accessibilityValue(for session: RemoteSession) -> String {
+        let unread = session.unread ? ", 읽지 않은 응답 있음" : ""
+        return "\(preview(for: session)), \(SessionListTimeFormatter.string(from: session.lastActivityAt))\(unread)"
     }
 }
 
 private struct SessionRow: View {
     let session: RemoteSession
+    let preview: String
 
     var body: some View {
-        HStack(spacing: 13) {
-            ZStack(alignment: .topTrailing) {
-                RoundedRectangle(cornerRadius: 13, style: .continuous)
-                    .fill(session.phase.color.opacity(0.12))
-                    .frame(width: 43, height: 43)
-                    .overlay { Image(systemName: "terminal.fill").foregroundStyle(session.phase.color) }
-                if session.unread {
-                    Circle().fill(VipiTheme.success).frame(width: 10, height: 10)
-                        .overlay(Circle().stroke(VipiTheme.surface, lineWidth: 2))
-                        .offset(x: 2, y: -2)
-                }
-            }
-            VStack(alignment: .leading, spacing: 5) {
-                HStack {
-                    Text(session.name).font(.body.weight(.semibold)).lineLimit(1)
-                    Spacer()
-                    Text(session.lastActivityAt, style: .relative)
-                        .font(.caption2).foregroundStyle(VipiTheme.secondary)
-                }
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 7) {
+                Text(session.name)
+                    .font(.body.weight(session.unread ? .bold : .semibold))
+                    .foregroundStyle(VipiTheme.primary)
+                    .lineLimit(1)
+
                 HStack(spacing: 7) {
-                    Circle().fill(session.phase.color).frame(width: 6, height: 6)
-                    Text(session.phase.label)
-                    Text("·")
-                    Text(session.model)
-                    if let branch = session.branch {
-                        Text("·"); Image(systemName: "arrow.triangle.branch"); Text(branch)
+                    if session.phase == .working {
+                        ProgressView()
+                            .controlSize(.mini)
+                            .tint(VipiTheme.accent)
+                            .accessibilityHidden(true)
+                    } else if session.phase == .waitingForInput || session.phase == .failed {
+                        Circle()
+                            .fill(session.phase.color)
+                            .frame(width: 7, height: 7)
+                            .accessibilityHidden(true)
                     }
+                    Text(preview)
+                        .lineLimit(2)
                 }
-                .font(.caption)
-                .foregroundStyle(VipiTheme.secondary)
-                .lineLimit(1)
+                .font(.subheadline)
+                .foregroundStyle(statusColor)
             }
-            Image(systemName: "chevron.right")
-                .font(.caption.bold()).foregroundStyle(VipiTheme.secondary.opacity(0.5))
+
+            Spacer(minLength: 8)
+
+            VStack(alignment: .trailing, spacing: 8) {
+                Text(SessionListTimeFormatter.string(from: session.lastActivityAt))
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(VipiTheme.secondary)
+                    .lineLimit(1)
+
+                if session.unread {
+                    Text("1")
+                        .font(.caption2.bold())
+                        .foregroundStyle(.white)
+                        .frame(minWidth: 20, minHeight: 20)
+                        .background(VipiTheme.danger, in: Capsule())
+                        .accessibilityLabel("읽지 않은 응답 1개")
+                }
+            }
         }
-        .padding(14)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity, minHeight: 76, alignment: .leading)
         .contentShape(Rectangle())
+        .background(session.unread ? VipiTheme.accent.opacity(0.055) : Color.clear)
+    }
+
+    private var statusColor: Color {
+        switch session.phase {
+        case .working: VipiTheme.accent
+        case .waitingForInput: VipiTheme.warning
+        case .failed: VipiTheme.danger
+        default: VipiTheme.secondary
+        }
+    }
+}
+
+enum SessionListSearch {
+    static func matches(_ session: RemoteSession, query: String) -> Bool {
+        session.name.localizedCaseInsensitiveContains(query)
+    }
+}
+
+enum SessionListTimeFormatter {
+    private static let timeZone = TimeZone(identifier: "Asia/Seoul")!
+
+    static func string(from date: Date, now: Date = .now) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+
+        let formatter = DateFormatter()
+        formatter.timeZone = timeZone
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+
+        if calendar.isDate(date, inSameDayAs: now) {
+            formatter.dateFormat = "h:mm a"
+        } else if calendar.isDate(date, equalTo: now, toGranularity: .year) {
+            formatter.dateFormat = "MMM d"
+        } else {
+            formatter.dateFormat = "yyyy.MM.dd"
+        }
+        return formatter.string(from: date)
     }
 }

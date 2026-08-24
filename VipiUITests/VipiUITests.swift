@@ -18,7 +18,7 @@ final class VipiUITests: XCTestCase {
         let session = app.buttons["session.mobile"]
         XCTAssertTrue(session.waitForExistence(timeout: 5))
         XCTAssertEqual(session.label, "개발 / 모바일 세션 앱")
-        XCTAssertTrue((session.value as? String)?.contains("Working") == true)
+        XCTAssertTrue((session.value as? String)?.contains("응답을 생성하고 있어요") == true)
         XCTAssertTrue(session.isHittable)
         session.tap()
 

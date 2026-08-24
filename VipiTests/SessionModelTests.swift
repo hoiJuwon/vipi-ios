@@ -132,6 +132,24 @@ final class SessionModelTests: XCTestCase {
         )
     }
 
+    func testSessionSearchMatchesTitleOnly() {
+        let session = MockData.sessions[0]
+        XCTAssertTrue(SessionListSearch.matches(session, query: "모바일 세션"))
+        XCTAssertFalse(SessionListSearch.matches(session, query: "vipi-ios"))
+    }
+
+    func testSessionListTimesUseKSTAndKakaoStyleGranularity() throws {
+        let parser = ISO8601DateFormatter()
+        let now = try XCTUnwrap(parser.date(from: "2026-08-24T13:00:00Z"))
+        let sameDay = try XCTUnwrap(parser.date(from: "2026-08-24T12:45:00Z"))
+        let previousDay = try XCTUnwrap(parser.date(from: "2026-08-23T12:45:00Z"))
+        let previousYear = try XCTUnwrap(parser.date(from: "2025-08-24T12:45:00Z"))
+
+        XCTAssertEqual(SessionListTimeFormatter.string(from: sameDay, now: now), "9:45 PM")
+        XCTAssertEqual(SessionListTimeFormatter.string(from: previousDay, now: now), "Aug 23")
+        XCTAssertEqual(SessionListTimeFormatter.string(from: previousYear, now: now), "2025.08.24")
+    }
+
     @MainActor func testSecurePairingPayloadAndKeychainRoundTrip() throws {
         KeychainStore.deleteToken()
         defer { KeychainStore.deleteToken() }
