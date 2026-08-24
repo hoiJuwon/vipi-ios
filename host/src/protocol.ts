@@ -9,6 +9,7 @@ export interface SessionRecord {
   phase: SessionPhase;
   unread: boolean;
   lastActivityAt: string;
+  lastMessagePreview?: string;
   model: string;
   thinkingLevel: string;
   branch?: string;

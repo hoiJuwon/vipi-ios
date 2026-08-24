@@ -20,7 +20,9 @@ final class AppStore {
     private let allowsInsecureLocalhostForUITesting: Bool
     private var lastEntryBySession: [String: String] = [:]
     private var lastMessageAtBySession: [String: Date] = [:]
-    private var pendingHistoryRequests: [String: String] = [:]
+    private var oldestEntryBySession: [String: String] = [:]
+    private var historyHasMoreBySession: [String: Bool] = [:]
+    private var pendingHistoryRequests: [String: PendingHistoryRequest] = [:]
     private var historyRequestsInFlight: Set<String> = []
 
     init(
@@ -65,12 +67,13 @@ final class AppStore {
     func session(id: String) -> RemoteSession? { sessions.first { $0.id == id } }
     func lastEntryForTesting(sessionID: String) -> String? { lastEntryBySession[sessionID] }
     func registerHistoryRequestForTesting(id: String, sessionID: String) {
-        pendingHistoryRequests[id] = sessionID
+        pendingHistoryRequests[id] = PendingHistoryRequest(sessionID: sessionID, direction: .initial)
         historyRequestsInFlight.insert(sessionID)
     }
     func messages(for id: String) -> [ChatMessage] { messagesBySession[id] ?? [] }
     func branches(for id: String) -> [BranchNode] { branchesBySession[id] ?? [] }
     func isHistoryLoading(for id: String) -> Bool { historyRequestsInFlight.contains(id) }
+    func canLoadOlderHistory(for id: String) -> Bool { historyHasMoreBySession[id] == true }
 
     func connectIfConfigured() async {
         guard connectionState != .demo,
@@ -80,8 +83,18 @@ final class AppStore {
     }
 
     func ensureHistory(for sessionID: String) async {
-        guard connectionState == .connected, messages(for: sessionID).isEmpty else { return }
-        await requestHistory(for: sessionID)
+        guard connectionState == .connected else { return }
+        await requestHistory(
+            for: sessionID,
+            direction: messages(for: sessionID).isEmpty ? .initial : .incremental
+        )
+    }
+
+    func loadOlderHistory(for sessionID: String) async {
+        guard connectionState == .connected,
+              historyHasMoreBySession[sessionID] == true,
+              oldestEntryBySession[sessionID] != nil else { return }
+        await requestHistory(for: sessionID, direction: .older)
     }
 
     func connect() async {
@@ -200,17 +213,20 @@ final class AppStore {
         sessions[index].unread = false
     }
 
-    private func requestHistory(for sessionID: String) async {
+    private func requestHistory(for sessionID: String, direction: HistoryDirection) async {
         guard historyRequestsInFlight.insert(sessionID).inserted else { return }
+        let payload = HistoryPayload(
+            sessionID: sessionID,
+            afterEntryID: direction == .incremental ? lastEntryBySession[sessionID] : nil,
+            beforeEntryID: direction == .older ? oldestEntryBySession[sessionID] : nil,
+            limit: 60
+        )
         do {
-            let requestID = try await broker.send(
-                type: "session.history",
-                payload: HistoryPayload(sessionID: sessionID, afterEntryID: lastEntryBySession[sessionID])
-            )
-            pendingHistoryRequests[requestID] = sessionID
+            let requestID = try await broker.send(type: "session.history", payload: payload)
+            pendingHistoryRequests[requestID] = PendingHistoryRequest(sessionID: sessionID, direction: direction)
             Task { [weak self] in
                 try? await Task.sleep(for: .seconds(12))
-                guard let self, self.pendingHistoryRequests[requestID] == sessionID else { return }
+                guard let self, self.pendingHistoryRequests[requestID]?.sessionID == sessionID else { return }
                 self.pendingHistoryRequests.removeValue(forKey: requestID)
                 self.historyRequestsInFlight.remove(sessionID)
             }
@@ -225,11 +241,17 @@ final class AppStore {
         apply(value.event, to: value.sessionID)
     }
 
-    private func reduceHistoryResponse(_ payload: JSONValue, sessionID: String) {
+    private func reduceHistoryResponse(_ payload: JSONValue, request: PendingHistoryRequest) {
         guard let response: HistoryResponsePayload = decode(payload), response.ok,
               let result = response.result else { return }
+        let sessionID = request.sessionID
         for event in result.events { apply(event, to: sessionID) }
+        messagesBySession[sessionID]?.sort { $0.timestamp < $1.timestamp }
         if let lastEntryID = result.lastEntryID { lastEntryBySession[sessionID] = lastEntryID }
+        if request.direction != .incremental {
+            if let oldestEntryID = result.oldestEntryID { oldestEntryBySession[sessionID] = oldestEntryID }
+            historyHasMoreBySession[sessionID] = result.hasMore ?? false
+        }
     }
 
     private func apply(_ event: NormalizedEvent, to sessionID: String) {
@@ -340,6 +362,8 @@ final class AppStore {
                 if snapshot.replayReset == true {
                     lastEntryBySession.removeAll()
                     lastMessageAtBySession.removeAll()
+                    oldestEntryBySession.removeAll()
+                    historyHasMoreBySession.removeAll()
                     pendingHistoryRequests.removeAll()
                     historyRequestsInFlight.removeAll()
                 }
@@ -348,9 +372,6 @@ final class AppStore {
                     var updated = session
                     updated.lastActivityAt = lastMessageAt
                     return updated
-                }
-                for session in sessions where session.phase != .offline {
-                    Task { await requestHistory(for: session.id) }
                 }
             } catch {
                 connectionState = .disconnected("Invalid session snapshot")
@@ -371,15 +392,24 @@ final class AppStore {
                     commandError = "The host rejected the command."
                 }
             }
-            if let id = envelope.id, let sessionID = pendingHistoryRequests.removeValue(forKey: id) {
-                historyRequestsInFlight.remove(sessionID)
-                reduceHistoryResponse(payload, sessionID: sessionID)
+            if let id = envelope.id, let request = pendingHistoryRequests.removeValue(forKey: id) {
+                reduceHistoryResponse(payload, request: request)
+                historyRequestsInFlight.remove(request.sessionID)
             }
             return
         }
         if envelope.type == "error", case .object(let payload) = envelope.payload,
            case .string(let code) = payload["code"] {
-            commandError = code
+            if let id = envelope.id, let request = pendingHistoryRequests.removeValue(forKey: id) {
+                historyRequestsInFlight.remove(request.sessionID)
+            }
+            if code == "SESSION_OFFLINE", case .string(let sessionID) = payload["sessionID"] {
+                if let index = sessions.firstIndex(where: { $0.id == sessionID }) {
+                    sessions[index].phase = .offline
+                }
+            } else {
+                commandError = code
+            }
         }
     }
 
@@ -397,9 +427,20 @@ private struct SessionSnapshot: Decodable {
     let replayReset: Bool?
 }
 
+private enum HistoryDirection {
+    case initial, older, incremental
+}
+
+private struct PendingHistoryRequest {
+    let sessionID: String
+    let direction: HistoryDirection
+}
+
 private struct HistoryPayload: Encodable {
     let sessionID: String
     let afterEntryID: String?
+    let beforeEntryID: String?
+    let limit: Int
 }
 
 private struct SessionEventPayload: Decodable {
@@ -415,6 +456,8 @@ private struct HistoryResponsePayload: Decodable {
 private struct HistoryResult: Decodable {
     let events: [NormalizedEvent]
     let lastEntryID: String?
+    let oldestEntryID: String?
+    let hasMore: Bool?
 }
 
 private struct NormalizedEvent: Decodable {

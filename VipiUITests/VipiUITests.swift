@@ -45,6 +45,8 @@ final class VipiUITests: XCTestCase {
         XCTAssertTrue(session.waitForExistence(timeout: 10))
         session.tap()
         XCTAssertTrue(app.staticTexts["History restored"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["chat.previousPiMessage"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["chat.latestPiMessage"].exists)
 
         let composer = app.textFields["chat.composer"]
         composer.tap()

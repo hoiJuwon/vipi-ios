@@ -5,6 +5,8 @@ import { envelope, PROTOCOL_VERSION, type Envelope, type SessionRecord } from ".
 import { loadOrCreateToken, rotateToken, tokenMatches, tokenPath } from "./token.js";
 import { readTmuxRegistry } from "./registry.js";
 import { createPairingPayload } from "./pairing.js";
+import { normalizeHistory } from "./normalization.js";
+import { readSessionBranch } from "./session-history.js";
 
 const host = process.env.VIPI_HOST ?? "127.0.0.1";
 const port = Number(process.env.VIPI_PORT ?? "8765");
@@ -115,6 +117,23 @@ wss.on("connection", (socket) => {
     }
     const sessionID = message.payload?.sessionID;
     if (typeof sessionID !== "string") return;
+    if (message.type === "session.history") {
+      const session = mergedSessions().find((candidate) => candidate.id === sessionID);
+      if (session?.sessionFile) {
+        try {
+          const result = normalizeHistory(readSessionBranch(session.sessionFile), {
+            afterEntryID: typeof message.payload?.afterEntryID === "string" ? message.payload.afterEntryID : undefined,
+            beforeEntryID: typeof message.payload?.beforeEntryID === "string" ? message.payload.beforeEntryID : undefined,
+            limit: typeof message.payload?.limit === "number" ? message.payload.limit : undefined,
+          });
+          socket.send(JSON.stringify(envelope("session.response", { requestID: message.id, ok: true, result }, message.id, ++sequence)));
+          return;
+        } catch {
+          // Fall through to the live runtime when the file is temporarily
+          // unavailable. The host remains read-only either way.
+        }
+      }
+    }
     const runtime = runtimes.get(sessionID);
     if (!runtime || runtime.readyState !== WebSocket.OPEN) {
       socket.send(JSON.stringify(envelope("error", { code: "SESSION_OFFLINE", sessionID }, message.id, ++sequence)));
@@ -137,7 +156,10 @@ wss.on("connection", (socket) => {
 });
 
 function mergedSessions(): SessionRecord[] {
-  const sessions = new Map(readTmuxRegistry().map((session) => [session.id, session]));
+  const sessions = new Map(readTmuxRegistry().map((session) => [
+    session.id,
+    runtimes.get(session.id)?.readyState === WebSocket.OPEN ? session : { ...session, phase: "offline" as const },
+  ]));
   for (const [id, session] of liveSessions) sessions.set(id, session);
   return [...sessions.values()].sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt));
 }

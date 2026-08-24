@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
+import { writeFileSync } from "node:fs";
 import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -8,6 +9,7 @@ import { after, before, test } from "node:test";
 import WebSocket from "ws";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { normalizeHistory, normalizeMessage, normalizeToolEvent } from "../src/normalization.js";
+import { readSessionBranch } from "../src/session-history.js";
 import { createPairingPayload } from "../src/pairing.js";
 
 const protocolVersion = 1;
@@ -121,13 +123,15 @@ test("normalizes message, tool, and incremental branch history", () => {
     { id: "e3", parentId: "e2", timestamp: "2026-08-24T00:00:02Z", type: "message", message: {
       role: "toolResult", toolCallId: "call-1", toolName: "read", content: [{ type: "text", text: "file body" }], isError: false, timestamp: 3,
     } },
-  ], "e1");
+  ], { afterEntryID: "e1" });
   assert.equal(history.events.length, 3);
   assert.deepEqual(history.events.map((event) => event.kind), ["message", "tool", "tool"]);
   assert.equal(history.events[1]?.entryID, "e2");
   assert.equal(history.events[2]?.entryID, "e3");
   assert.equal(history.events[2]?.kind === "tool" ? history.events[2].state : undefined, "succeeded");
   assert.equal(history.lastEntryID, "e3");
+  assert.equal(history.oldestEntryID, "e2");
+  assert.equal(history.hasMore, false);
 });
 
 test("bounds large real histories below the WebSocket payload limit", () => {
@@ -145,6 +149,23 @@ test("bounds large real histories below the WebSocket payload limit", () => {
   assert.equal(history.lastEntryID, "large-79");
   assert.equal(history.events.at(-1)?.entryID, "large-79");
   assert.ok(history.events.length < entries.length);
+  assert.equal(history.hasMore, true);
+
+  const older = normalizeHistory(entries, { beforeEntryID: history.oldestEntryID, limit: 20 });
+  assert.ok(older.events.length > 0);
+  assert.ok(older.events.every((event) => event.entryID !== history.oldestEntryID));
+});
+
+test("reads the active JSONL branch without becoming a writer", () => {
+  const file = join(directory, "branch.jsonl");
+  writeFileSync(file, [
+    JSON.stringify({ type: "session", version: 3 }),
+    JSON.stringify({ id: "root", parentId: null, type: "message", message: { role: "user", content: "root", timestamp: 1 } }),
+    JSON.stringify({ id: "old", parentId: "root", type: "message", message: { role: "assistant", content: "old branch", timestamp: 2 } }),
+    JSON.stringify({ id: "active", parentId: "root", type: "message", message: { role: "assistant", content: "active branch", timestamp: 3 } }),
+    "{partial",
+  ].join("\n"));
+  assert.deepEqual(readSessionBranch(file).map((entry) => entry.id), ["root", "active"]);
 });
 
 test("replays missed normalized runtime events from a sequence cursor", async () => {

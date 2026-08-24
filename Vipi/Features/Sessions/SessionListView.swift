@@ -80,6 +80,10 @@ struct SessionListView: View {
         })?.text {
             return text.replacingOccurrences(of: "\n", with: " ")
         }
+        if let preview = session.lastMessagePreview,
+           !preview.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return preview
+        }
         return "대화를 시작해보세요"
     }
 

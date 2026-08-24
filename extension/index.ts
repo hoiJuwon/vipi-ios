@@ -23,12 +23,26 @@ type RuntimeState = {
 export default function vipiBridge(pi: ExtensionAPI) {
   const runtime: RuntimeState = { phase: "idle", unread: false, disposed: false };
 
+  function recentMessageSnapshot(ctx: ExtensionContext): { preview?: string; timestamp?: string } {
+    for (const entry of [...ctx.sessionManager.getBranch()].reverse()) {
+      if (entry.type !== "message") continue;
+      const normalized = normalizeMessage(entry.message, entry.id, false, entry.id);
+      if (!normalized || normalized.kind !== "message" || !normalized.text.trim()) continue;
+      return {
+        preview: normalized.text.replace(/\s+/g, " ").trim().slice(0, 180),
+        timestamp: normalized.timestamp,
+      };
+    }
+    return {};
+  }
+
   function sessionSnapshot(ctx: ExtensionContext) {
     const sessionID = ctx.sessionManager.getSessionId();
     const name = pi.getSessionName() ?? "기타 / 이름 없는 세션";
+    const recent = recentMessageSnapshot(ctx);
     return {
       id: sessionID, name, cwd: ctx.cwd, phase: runtime.phase, unread: runtime.unread,
-      lastActivityAt: new Date().toISOString(),
+      lastActivityAt: recent.timestamp ?? new Date().toISOString(), lastMessagePreview: recent.preview,
       model: ctx.model?.name ?? ctx.model?.id ?? "Pi",
       thinkingLevel: pi.getThinkingLevel(),
       branch: undefined,
@@ -112,7 +126,9 @@ export default function vipiBridge(pi: ExtensionAPI) {
       if (message.type === "session.compact") { ctx.compact(); reply(true); return; }
       if (message.type === "session.history") {
         const afterEntryID = typeof message.payload?.afterEntryID === "string" ? message.payload.afterEntryID : undefined;
-        reply(true, normalizeHistory(ctx.sessionManager.getBranch(), afterEntryID)); return;
+        const beforeEntryID = typeof message.payload?.beforeEntryID === "string" ? message.payload.beforeEntryID : undefined;
+        const limit = typeof message.payload?.limit === "number" ? message.payload.limit : undefined;
+        reply(true, normalizeHistory(ctx.sessionManager.getBranch(), { afterEntryID, beforeEntryID, limit })); return;
       }
       reply(false, { error: "unsupported command" });
     } catch (error) { reply(false, { error: error instanceof Error ? error.message : String(error) }); }

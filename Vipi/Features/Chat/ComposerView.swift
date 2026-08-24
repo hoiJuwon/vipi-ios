@@ -8,13 +8,14 @@ struct ComposerView: View {
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 9) {
-            TextField("Message Pi…", text: $draft, axis: .vertical)
+            TextField(phase == .offline ? "Reconnecting session…" : "Message Pi…", text: $draft, axis: .vertical)
                 .accessibilityIdentifier("chat.composer")
                 .accessibilityLabel("Message Pi")
                 .lineLimit(1...6)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 11)
-                .vipiGlass(interactive: true, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .vipiGlass(interactive: phase != .offline, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .disabled(phase == .offline)
 
             if phase == .working {
                 Menu {
@@ -43,7 +44,7 @@ struct ComposerView: View {
                         in: Circle()
                     )
             }
-            .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .disabled(phase == .offline || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             .accessibilityIdentifier("chat.send")
             .accessibilityLabel("Send message")
             .accessibilityHint(phase == .working ? "Delivers using the selected queue or steer mode" : "Sends a prompt to Pi")

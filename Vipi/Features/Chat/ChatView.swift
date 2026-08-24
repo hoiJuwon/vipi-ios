@@ -6,6 +6,8 @@ struct ChatView: View {
     @State private var draft = ""
     @State private var showDetails = false
     @State private var showBranches = false
+    @State private var focusedAssistantID: String?
+    @State private var userHasScrolledTranscript = false
 
     private var session: RemoteSession? { store.session(id: sessionID) }
 
@@ -78,23 +80,116 @@ struct ChatView: View {
                 .accessibilityIdentifier("chat.loading")
         } else {
             ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(spacing: 20) {
-                        ForEach(store.messages(for: sessionID)) { message in
-                            MessageView(message: message).id(message.id)
+                ZStack(alignment: .bottomTrailing) {
+                    ScrollView {
+                        LazyVStack(spacing: 20) {
+                            if store.canLoadOlderHistory(for: sessionID) {
+                                OlderHistoryLoader(isLoading: store.isHistoryLoading(for: sessionID))
+                                    .onAppear {
+                                        guard userHasScrolledTranscript else { return }
+                                        let anchor = store.messages(for: sessionID).first?.id
+                                        Task {
+                                            await store.loadOlderHistory(for: sessionID)
+                                            if let anchor { proxy.scrollTo(anchor, anchor: .top) }
+                                        }
+                                    }
+                            }
+                            ForEach(store.messages(for: sessionID)) { message in
+                                MessageView(message: message).id(message.id)
+                            }
+                            Color.clear.frame(height: 4).id("bottom")
                         }
-                        Color.clear.frame(height: 4).id("bottom")
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 18)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 18)
+                    .scrollDismissesKeyboard(.interactively)
+                    .accessibilityIdentifier("chat.transcript")
+                    .onScrollPhaseChange { _, phase in
+                        if phase == .interacting { userHasScrolledTranscript = true }
+                    }
+                    .onChange(of: store.messages(for: sessionID).count) {
+                        guard !store.isHistoryLoading(for: sessionID) else { return }
+                        focusedAssistantID = assistantMessageIDs.last
+                        withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
+                    }
+
+                    if !assistantMessageIDs.isEmpty {
+                        MessageNavigationControls(
+                            goUp: { focusPreviousAssistant(using: proxy) },
+                            goDown: { focusLatestAssistant(using: proxy) }
+                        )
+                        .padding(.trailing, 12)
+                        .padding(.bottom, 10)
+                    }
                 }
-                .scrollDismissesKeyboard(.interactively)
-                .accessibilityIdentifier("chat.transcript")
-                .onChange(of: store.messages(for: sessionID).count) {
-                    withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
+                .onAppear {
+                    focusedAssistantID = assistantMessageIDs.last
+                    proxy.scrollTo("bottom", anchor: .bottom)
                 }
             }
         }
+    }
+
+    private var assistantMessageIDs: [String] {
+        store.messages(for: sessionID).filter { $0.role == .assistant }.map(\.id)
+    }
+
+    private func focusPreviousAssistant(using proxy: ScrollViewProxy) {
+        let ids = assistantMessageIDs
+        guard !ids.isEmpty else { return }
+        let currentIndex = focusedAssistantID.flatMap { ids.firstIndex(of: $0) } ?? ids.count - 1
+        let targetIndex = max(0, currentIndex - 1)
+        focusedAssistantID = ids[targetIndex]
+        withAnimation(.snappy) { proxy.scrollTo(ids[targetIndex], anchor: .top) }
+    }
+
+    private func focusLatestAssistant(using proxy: ScrollViewProxy) {
+        guard let latest = assistantMessageIDs.last else { return }
+        focusedAssistantID = latest
+        withAnimation(.snappy) { proxy.scrollTo(latest, anchor: .top) }
+    }
+}
+
+private struct OlderHistoryLoader: View {
+    let isLoading: Bool
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if isLoading { ProgressView().controlSize(.small) }
+            Text(isLoading ? "이전 메시지를 불러오는 중…" : "위로 스크롤해 이전 메시지 보기")
+                .font(.caption)
+                .foregroundStyle(VipiTheme.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 34)
+        .accessibilityIdentifier("chat.olderHistory")
+    }
+}
+
+private struct MessageNavigationControls: View {
+    let goUp: () -> Void
+    let goDown: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Button(action: goUp) {
+                Image(systemName: "chevron.up")
+                    .frame(width: 38, height: 34)
+            }
+            .accessibilityIdentifier("chat.previousPiMessage")
+            .accessibilityLabel("이전 Pi 메시지")
+            Divider().overlay(VipiTheme.stroke).padding(.horizontal, 8)
+            Button(action: goDown) {
+                Image(systemName: "chevron.down")
+                    .frame(width: 38, height: 34)
+            }
+            .accessibilityIdentifier("chat.latestPiMessage")
+            .accessibilityLabel("최신 Pi 메시지")
+        }
+        .font(.subheadline.bold())
+        .foregroundStyle(VipiTheme.primary)
+        .frame(width: 42)
+        .vipiGlass(interactive: true, in: Capsule())
     }
 }
 

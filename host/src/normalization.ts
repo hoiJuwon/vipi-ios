@@ -136,11 +136,41 @@ function recentEventsWithinBudget(events: NormalizedSessionEvent[]): NormalizedS
   return selected.reverse();
 }
 
-export function normalizeHistory(entriesValue: unknown, afterEntryID?: string): { events: NormalizedSessionEvent[]; lastEntryID?: string } {
-  if (!Array.isArray(entriesValue)) return { events: [] };
+export interface HistoryOptions {
+  afterEntryID?: string;
+  beforeEntryID?: string;
+  limit?: number;
+}
+
+export interface NormalizedHistory {
+  events: NormalizedSessionEvent[];
+  lastEntryID?: string;
+  oldestEntryID?: string;
+  hasMore: boolean;
+}
+
+export function normalizeHistory(entriesValue: unknown, options: HistoryOptions = {}): NormalizedHistory {
+  if (!Array.isArray(entriesValue)) return { events: [], hasMore: false };
   const entries = entriesValue.map(record).filter((entry): entry is UnknownRecord => Boolean(entry));
-  const cursorIndex = afterEntryID ? entries.findIndex((entry) => entry.id === afterEntryID) : -1;
-  const selected = afterEntryID && cursorIndex >= 0 ? entries.slice(cursorIndex + 1) : entries;
+  const limit = Math.min(120, Math.max(20, options.limit ?? 60));
+  const afterIndex = options.afterEntryID ? entries.findIndex((entry) => entry.id === options.afterEntryID) : -1;
+  const beforeIndex = options.beforeEntryID ? entries.findIndex((entry) => entry.id === options.beforeEntryID) : -1;
+
+  let start = 0;
+  let end = entries.length;
+  if (options.afterEntryID && afterIndex >= 0) {
+    start = afterIndex + 1;
+  } else {
+    end = options.beforeEntryID && beforeIndex >= 0 ? beforeIndex : entries.length;
+    start = Math.max(0, end - limit);
+    // Avoid opening in the middle of the latest user→Pi exchange whenever the
+    // bounded entry window can include its initiating user message.
+    if (!options.beforeEntryID) {
+      const latestUser = entries.slice(0, end).findLastIndex((entry) => entry.type === "message" && record(entry.message)?.role === "user");
+      if (latestUser >= 0) start = Math.min(start, latestUser);
+    }
+  }
+  const selected = entries.slice(start, end);
   const events: NormalizedSessionEvent[] = [];
   for (const [index, entry] of selected.entries()) {
     const entryID = typeof entry.id === "string" ? entry.id : `history-entry-${index}`;
@@ -153,5 +183,11 @@ export function normalizeHistory(entriesValue: unknown, afterEntryID?: string): 
     }
   }
   const last = entries.at(-1)?.id;
-  return { events: recentEventsWithinBudget(events), ...(typeof last === "string" ? { lastEntryID: last } : {}) };
+  const oldest = selected.at(0)?.id;
+  return {
+    events: recentEventsWithinBudget(events),
+    ...(typeof last === "string" ? { lastEntryID: last } : {}),
+    ...(typeof oldest === "string" ? { oldestEntryID: oldest } : {}),
+    hasMore: !options.afterEntryID && start > 0,
+  };
 }

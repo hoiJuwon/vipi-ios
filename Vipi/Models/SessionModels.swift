@@ -40,6 +40,7 @@ struct RemoteSession: Identifiable, Codable, Hashable, Sendable {
     var phase: SessionPhase
     var unread: Bool
     var lastActivityAt: Date
+    var lastMessagePreview: String? = nil
     var model: String
     var thinkingLevel: String
     var branch: String?
