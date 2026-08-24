@@ -21,4 +21,5 @@ node_modules/
 
 .pi/goals/
 .pi/npm/
+.pi/.goals-pool-snapshot.json
 .pi/pi-goal-x-settings.json

@@ -16,8 +16,10 @@
 		414A19E6F40D0DD5740CEF81 /* VipiApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75B5AAF1B02E8D14B6D7E61F /* VipiApp.swift */; };
 		4E82335184F1D08DEB7A7E64 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A1E79DF96186F6A5F9D412D /* KeychainStore.swift */; };
 		568FD418BC3F3A8E3D82DEFE /* StatusPill.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51A56E1D0C45CB92DB1FFCDC /* StatusPill.swift */; };
+		61A328CB2B99E6BEA303EED9 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 98035A66C7C56E32B5CB418B /* PrivacyInfo.xcprivacy */; };
 		679B4EF0DAE79E70208BCBE2 /* SessionModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6246E1CE326A44F6EF0041CB /* SessionModels.swift */; };
 		680465B91548F84E8AB85B56 /* SessionModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 662425F04AF7242E508F30CF /* SessionModelTests.swift */; };
+		7B0512649854C073EFE2A1EE /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 111111528337BA9CF7C8ABCA /* Assets.xcassets */; };
 		8613E2C6CFC95A65A2F7501B /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8630CBCD6D48EAA9D97D225B /* SettingsView.swift */; };
 		88FA779657B240602FA9503C /* SessionListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4C3A37166A3EAB55DEA70D3 /* SessionListView.swift */; };
 		A22F88C8554BCE2B0402AA63 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E239652719F5AEB87D138D0 /* ChatView.swift */; };
@@ -48,6 +50,7 @@
 /* Begin PBXFileReference section */
 		0C3A8EBF742CB0B8AA8B141A /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		0CFDFFA8E9005F6741B77885 /* Vipi.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Vipi.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		111111528337BA9CF7C8ABCA /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		1B65F32F13938396FA43217F /* AppStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStore.swift; sourceTree = "<group>"; };
 		257DD7057C41DF8DA0E70B76 /* VipiTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = VipiTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		3A1E79DF96186F6A5F9D412D /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
@@ -61,6 +64,7 @@
 		72FF8640084103979F5F7473 /* ChatModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatModels.swift; sourceTree = "<group>"; };
 		75B5AAF1B02E8D14B6D7E61F /* VipiApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VipiApp.swift; sourceTree = "<group>"; };
 		8630CBCD6D48EAA9D97D225B /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		98035A66C7C56E32B5CB418B /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		9C2627C2C6A76D4D798CDE4F /* WireProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WireProtocol.swift; sourceTree = "<group>"; };
 		A812CC5591D5944635F89BEA /* BrokerClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrokerClient.swift; sourceTree = "<group>"; };
 		AEA45577862E5D8092E1F11A /* VipiTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VipiTheme.swift; sourceTree = "<group>"; };
@@ -146,6 +150,8 @@
 		86A2E914793CF683DFA26B87 /* Vipi */ = {
 			isa = PBXGroup;
 			children = (
+				111111528337BA9CF7C8ABCA /* Assets.xcassets */,
+				98035A66C7C56E32B5CB418B /* PrivacyInfo.xcprivacy */,
 				8C2637C8CBA8AE392DB8F556 /* App */,
 				4AE8D25370FBB230953E8C74 /* Components */,
 				D71D63FA530FA6E4E3B210E5 /* DesignSystem */,
@@ -253,6 +259,7 @@
 			buildConfigurationList = D7E9161BEAE3D1D308A36A99 /* Build configuration list for PBXNativeTarget "Vipi" */;
 			buildPhases = (
 				44F86B7A5667B56786EE7C5A /* Sources */,
+				79B7441BE1ED62671A3BE638 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -324,6 +331,18 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		79B7441BE1ED62671A3BE638 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7B0512649854C073EFE2A1EE /* Assets.xcassets in Resources */,
+				61A328CB2B99E6BEA303EED9 /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		03D6944FE0DD63129991B82D /* Sources */ = {
@@ -513,7 +532,7 @@
 				);
 				PRODUCT_NAME = Vipi;
 				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -596,7 +615,7 @@
 				);
 				PRODUCT_NAME = Vipi;
 				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
