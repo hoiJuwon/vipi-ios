@@ -172,6 +172,7 @@ test("routes prompt modes, abort, history, responses, and tool events", async ()
     ["session.prompt", { sessionID: "controls", text: "steer", delivery: "steer" }],
     ["session.prompt", { sessionID: "controls", text: "follow", delivery: "followUp" }],
     ["session.abort", { sessionID: "controls" }],
+    ["session.compact", { sessionID: "controls" }],
     ["session.history", { sessionID: "controls", afterEntryID: "entry-1" }],
   ].entries()) {
     const id = `request-${index}`;

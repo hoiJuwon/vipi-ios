@@ -58,11 +58,6 @@ struct SettingsView: View {
                 .accessibilityIdentifier("settings.rotateToken")
                 Button("Use demo data") { store.useDemoMode() }.foregroundStyle(VipiTheme.warning)
             }
-            Section("Connection") {
-                Toggle("Reconnect automatically", isOn: .constant(true))
-                Toggle("Notify when a run finishes", isOn: .constant(true))
-                Toggle("Notify when Pi needs input", isOn: .constant(true))
-            }
             Section("About") {
                 LabeledContent("App", value: "Vipi 0.1.0")
                 LabeledContent("Protocol", value: "v1")

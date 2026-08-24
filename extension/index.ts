@@ -78,6 +78,7 @@ export default function vipiBridge(pi: ExtensionAPI) {
         reply(true); return;
       }
       if (message.type === "session.abort") { ctx.abort(); reply(true); return; }
+      if (message.type === "session.compact") { ctx.compact(); reply(true); return; }
       if (message.type === "session.history") {
         const afterEntryID = typeof message.payload?.afterEntryID === "string" ? message.payload.afterEntryID : undefined;
         reply(true, normalizeHistory(ctx.sessionManager.getBranch(), afterEntryID)); return;

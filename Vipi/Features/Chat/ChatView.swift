@@ -6,7 +6,6 @@ struct ChatView: View {
     @State private var draft = ""
     @State private var showDetails = false
     @State private var showBranches = false
-    @State private var delivery: PromptDelivery = .prompt
 
     private var session: RemoteSession? { store.session(id: sessionID) }
 
@@ -31,7 +30,10 @@ struct ChatView: View {
                 Menu {
                     Button("Session details", systemImage: "info.circle") { showDetails = true }
                     Button("Conversation branches", systemImage: "arrow.triangle.branch") { showBranches = true }
-                    Button("Compact context", systemImage: "arrow.down.right.and.arrow.up.left") { }
+                    Button("Compact context", systemImage: "arrow.down.right.and.arrow.up.left") {
+                        Task { await store.compact(sessionID: sessionID) }
+                    }
+                    .accessibilityIdentifier("chat.compact")
                     Divider()
                     Button("Stop current run", systemImage: "stop.circle", role: .destructive) {
                         Task { await store.abort(sessionID: sessionID) }
@@ -46,12 +48,24 @@ struct ChatView: View {
             }
         }
         .onAppear { store.markRead(sessionID) }
+        .alert("Command failed", isPresented: commandErrorPresented) {
+            Button("OK") { store.commandError = nil }
+        } message: {
+            Text(store.commandError ?? "Unknown transport error")
+        }
         .sheet(isPresented: $showDetails) {
             if let session { SessionDetailsSheet(session: session) }
         }
         .sheet(isPresented: $showBranches) {
             BranchesSheet(nodes: store.branches(for: sessionID))
         }
+    }
+
+    private var commandErrorPresented: Binding<Bool> {
+        Binding(
+            get: { store.commandError != nil },
+            set: { if !$0 { store.commandError = nil } }
+        )
     }
 
     private var transcript: some View {

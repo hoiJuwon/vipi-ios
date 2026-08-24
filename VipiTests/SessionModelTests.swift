@@ -32,6 +32,15 @@ final class SessionModelTests: XCTestCase {
         XCTAssertEqual(store.messages(for: "wire")[0].tools.first?.state, .succeeded)
     }
 
+    @MainActor func testDisconnectedCommandsSurfaceErrors() async {
+        let store = AppStore()
+        await store.abort(sessionID: "mobile")
+        XCTAssertNotNil(store.commandError)
+        store.commandError = nil
+        await store.compact(sessionID: "mobile")
+        XCTAssertNotNil(store.commandError)
+    }
+
     @MainActor func testTokenRotationUpdatesReconnectCredentialsBeforeReturning() async throws {
         let broker = BrokerClient(reconnectHost: "https://mac.example.ts.net", token: "old-token")
         let store = AppStore(broker: broker)

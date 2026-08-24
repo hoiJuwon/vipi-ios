@@ -14,6 +14,7 @@ final class AppStore {
     var selectedSessionID: String?
     var showingSettings = false
     var activityItems = MockData.activity
+    var commandError: String?
 
     private let broker: BrokerClient
     private var lastEntryBySession: [String: String] = [:]
@@ -95,15 +96,38 @@ final class AppStore {
         let message = ChatMessage(id: UUID().uuidString, role: .user, text: text, timestamp: .now)
         messagesBySession[sessionID, default: []].append(message)
         if connectionState == .connected {
-            _ = try? await broker.send(type: "session.prompt", payload: PromptPayload(sessionID: sessionID, text: text, delivery: delivery))
+            do {
+                _ = try await broker.send(type: "session.prompt", payload: PromptPayload(sessionID: sessionID, text: text, delivery: delivery))
+            } catch {
+                commandError = "Prompt could not be delivered: \(error.localizedDescription)"
+            }
         } else {
             simulateReply(sessionID: sessionID)
         }
     }
 
     func abort(sessionID: String) async {
-        guard connectionState == .connected else { return }
-        _ = try? await broker.send(type: "session.abort", payload: SessionCommandPayload(sessionID: sessionID))
+        guard connectionState == .connected else {
+            commandError = "The session is not connected."
+            return
+        }
+        do {
+            _ = try await broker.send(type: "session.abort", payload: SessionCommandPayload(sessionID: sessionID))
+        } catch {
+            commandError = "Abort could not be delivered: \(error.localizedDescription)"
+        }
+    }
+
+    func compact(sessionID: String) async {
+        guard connectionState == .connected else {
+            commandError = "The session is not connected."
+            return
+        }
+        do {
+            _ = try await broker.send(type: "session.compact", payload: SessionCommandPayload(sessionID: sessionID))
+        } catch {
+            commandError = "Compaction could not be started: \(error.localizedDescription)"
+        }
     }
 
     func markRead(_ sessionID: String) {
@@ -237,7 +261,7 @@ final class AppStore {
         }
         if envelope.type == "error", case .object(let payload) = envelope.payload,
            case .string(let code) = payload["code"] {
-            connectionState = .disconnected(code)
+            commandError = code
         }
     }
 }

@@ -97,7 +97,7 @@ wss.on("connection", (socket) => {
       for (const client of mobileClients) if (client !== socket) client.close(4001, "token rotated");
       return;
     }
-    if (!new Set(["session.prompt", "session.abort", "session.history"]).has(message.type)) {
+    if (!new Set(["session.prompt", "session.abort", "session.compact", "session.history"]).has(message.type)) {
       socket.send(JSON.stringify(envelope("error", { code: "UNSUPPORTED_COMMAND" }, message.id, ++sequence)));
       return;
     }

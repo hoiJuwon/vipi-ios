@@ -32,14 +32,6 @@ struct SessionListView: View {
                 .padding(.vertical, 7)
                 .vipiGlass(in: Capsule())
             }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { } label: {
-                    Image(systemName: "plus")
-                        .frame(width: 34, height: 34)
-                        .vipiGlass(interactive: true, in: Circle())
-                }
-                .accessibilityLabel("New session")
-            }
         }
     }
 

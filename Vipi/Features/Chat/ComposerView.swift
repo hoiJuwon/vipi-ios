@@ -20,11 +20,6 @@ struct ComposerView: View {
                 }
             }
             HStack(alignment: .bottom, spacing: 10) {
-                Button { } label: {
-                    Image(systemName: "plus").frame(width: 36, height: 36)
-                        .vipiGlass(interactive: true, in: Circle())
-                }
-                .foregroundStyle(VipiTheme.primary)
                 TextField("Message Pi…", text: $draft, axis: .vertical)
                     .accessibilityIdentifier("chat.composer")
                     .lineLimit(1...6)
