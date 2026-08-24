@@ -1,40 +1,31 @@
 # Implementation status
 
-Baseline recorded 2026-08-24.
+Updated 2026-08-24 after independent-audit remediation.
 
-## Passing baseline
+## Implemented
 
-- `npm run check` passes TypeScript type checking.
-- `xcodebuild ... test` passes the two existing Swift unit tests on the Vipi iPhone simulator (iOS 26.5).
-- `main` initially matched `origin/main` at `59592a9`.
+- The active tmux Pi process remains the sole JSONL writer.
+- The real extension normalizes streaming messages, assistant tool calls, `toolResult` history entries, tool execution updates, history cursors, and runtime state.
+- The broker provides bounded sequence replay, reconnect, correlated command responses, prompt/steer/follow-up/abort/compact routing, rate limits, loopback-only defaults, token rotation, and launchd setup.
+- iOS reduces live/history/tool events, reconnects incrementally, stores pairing tokens in this-device-only Keychain, updates reconnect credentials on rotation, and surfaces transport/runtime command failures.
+- Placeholder controls were removed. Production controls have actions and stable accessibility identifiers/semantics.
+- Pairing QR output requires an explicit public HTTPS `.ts.net` URL; loopback is never encoded as the phone destination.
 
-## Gaps against the completion objective
+## Passing validation
 
-### Host and extension
+- `npm run check`: TypeScript and all host/real-extension integration tests pass.
+- Locally signed simulator Swift tests pass, including Keychain save/load/delete and pairing persistence with no skip.
+- XCUITests pass demo and live broker/runtime flows.
+- `scripts/run-accessibility-matrix.sh` validates true light/dark rendering, Increase Contrast, accessibility-XXXL Dynamic Type, Reduce Motion, Reduce Transparency, and VoiceOver semantics/navigation. See `docs/QA_ACCESSIBILITY.md`.
+- Generic-device unsigned Release archive succeeds with the app icon and privacy manifest present.
+- Secret scan is clean; `main` is clean and synchronized to the verified private origin.
 
-- Runtime events are forwarded as raw Pi event objects rather than a stable normalized protocol.
-- Sequence numbers are process-global only; there is no bounded replay buffer, resume cursor, or incremental reconnect.
-- History returns raw branch entries and is not reduced into typed chat/tool records.
-- Runtime command responses are broadcast rather than correlated to the requesting mobile client.
-- No WebSocket integration tests, rate limiting, command audit trail, payload redaction, token rotation, or launchd installer exists.
-- The host prints the bearer token and embeds it in a terminal QR, which is unsuitable for hardened operation.
+## External release dependency
 
-### iOS
+The exact remaining signing evidence and three required user actions are retained in [`RELEASE_EVIDENCE.md`](RELEASE_EVIDENCE.md). A signed archive currently stops at:
 
-- The token lives only in observable memory; there is no Keychain persistence or pairing/rotation workflow.
-- Connection state becomes connected before `auth.ok`, and there is no reconnect/backoff or sequence resume.
-- The store only reduces authentication and session snapshots; history, streaming deltas, tool events, responses, and errors are not implemented.
-- Controls suppress transport errors; compact/model/thinking controls are placeholders.
-- Accessibility identifiers and an XCUITest target are absent.
+```text
+Signing for "Vipi" requires a development team. Select a development team in the Signing & Capabilities editor.
+```
 
-### QA and release
-
-- Existing tests cover only mock grouping/data (two unit tests).
-- No host integration tests, protocol reducer tests, Keychain tests, UI tests, or simulator end-to-end evidence exists.
-- Archive/signing and TestFlight metadata readiness have not been checked.
-
-## Invariants
-
-- The connected tmux Pi process remains the sole live JSONL writer.
-- The broker stays loopback-only by default and is exposed only through authenticated Tailscale HTTPS/WSS.
-- Secrets must not be logged, committed, placed in defaults, or included in screenshots/test artifacts.
+No signing security was weakened.
