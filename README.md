@@ -2,7 +2,7 @@
 
 A native SwiftUI chat client for Pi sessions that stay alive in tmux on your Mac. Vipi deliberately does **not** reproduce Vim or terminal UI on the phone: tmux is the runtime, the iPhone is a polished chat surface.
 
-## Current draft
+## TestFlight-ready architecture
 
 The repository contains all three layers needed for the product:
 
@@ -50,16 +50,22 @@ xcodegen generate
 open Vipi.xcodeproj
 ```
 
-Command-line verification:
+Canonical validation (provisions the live host/runtime fixture, runs host checks, locally signed Swift/Keychain tests, and every XCUITest with zero skips):
+
+```bash
+npm test
+```
+
+For a compile-only check:
 
 ```bash
 xcodebuild -project Vipi.xcodeproj \
   -scheme Vipi \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
+  -destination 'platform=iOS Simulator,name=Vipi iPhone' \
   CODE_SIGNING_ALLOWED=NO build
 ```
 
-The default launch uses realistic demo data. Open Settings to connect a host.
+Production launches with no fabricated sessions. Open Settings to pair a host. Demo data is available only through the explicit **Use demo data** action (and the isolated UI-test launch seam).
 
 ## Run the host
 

@@ -34,7 +34,8 @@ final class VipiUITests: XCTestCase {
     func testLiveHostPairingHistoryStreamingToolsAndAbort() throws {
         let healthURL = URL(string: "http://127.0.0.1:9876/health")!
         guard (try? Data(contentsOf: healthURL)) != nil else {
-            throw XCTSkip("Start the documented local E2E fixture on port 9876")
+            XCTFail("The canonical test runner must provision the local E2E fixture on port 9876")
+            return
         }
         app.tabBars.buttons["Settings"].tap()
         app.buttons["settings.connect"].tap()

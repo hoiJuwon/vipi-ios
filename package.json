@@ -10,7 +10,8 @@
     "host": "tsx host/src/server.ts",
     "host:check": "tsc --noEmit -p host/tsconfig.json",
     "host:test": "node --import tsx --test host/test/**/*.test.ts",
-    "check": "npm run host:check && npm run host:test"
+    "check": "npm run host:check && npm run host:test",
+    "test": "npm run check && ./scripts/run-simulator-e2e.sh"
   },
   "pi": {
     "extensions": ["./extension/index.ts"]
