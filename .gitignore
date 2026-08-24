@@ -1,0 +1,20 @@
+# Xcode
+DerivedData/
+build/
+*.xcuserstate
+xcuserdata/
+*.ipa
+
+# Node
+node_modules/
+*.log
+
+# Runtime/secrets
+.env
+.env.*
+!.env.example
+.vipi/
+*.sock
+
+# macOS
+.DS_Store

@@ -1,0 +1,138 @@
+# Vipi
+
+A native SwiftUI chat client for Pi sessions that stay alive in tmux on your Mac. Vipi deliberately does **not** reproduce Vim or terminal UI on the phone: tmux is the runtime, the iPhone is a polished chat surface.
+
+## Current draft
+
+The repository contains all three layers needed for the product:
+
+- `Vipi/` — iOS 18+ SwiftUI application with demo data and a typed WebSocket client
+- `host/` — loopback-only Node/TypeScript broker, token auth, tmux registry discovery, and session routing
+- `extension/` — Pi extension that registers each active process with the broker and forwards prompts/events
+
+Implemented app surfaces:
+
+- workspace-grouped live session list
+- working, input-needed, completed, unread, and offline states
+- streaming chat transcript
+- prompt / queue / steer composer
+- expandable tool execution cards
+- model, thinking, and context status
+- session details and conversation-branch sheets
+- cross-session activity feed
+- Tailscale host and device-token settings
+- built-in demo mode for UI development without a running host
+
+## Architecture
+
+```text
+SwiftUI app
+    │ HTTPS / WSS
+    ▼
+Tailscale Serve
+    │
+127.0.0.1:8765 Vipi host
+    ├── reads ~/.pi/agent/tmux-session-tree.json
+    └── routes to connected Pi extensions
+                    │
+           active Pi processes in tmux
+```
+
+The JSONL session remains owned by the existing Pi process. The host never opens a second writer for a live terminal session.
+
+## Build the iOS app
+
+Requirements: Xcode 16+, XcodeGen, and an iOS 18+ simulator/device.
+
+```bash
+brew install xcodegen
+xcodegen generate
+open Vipi.xcodeproj
+```
+
+Command-line verification:
+
+```bash
+xcodebuild -project Vipi.xcodeproj \
+  -scheme Vipi \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
+  CODE_SIGNING_ALLOWED=NO build
+```
+
+The default launch uses realistic demo data. Open Settings to connect a host.
+
+## Run the host
+
+```bash
+npm install
+npm run host
+```
+
+The host:
+
+- binds to `127.0.0.1:8765` by default
+- creates a 256-bit token at `~/.pi/agent/vipi/token` with mode `0600`
+- prints a local pairing QR payload
+- exposes `GET /health`
+- accepts mobile and Pi-runtime WebSocket clients at `/ws`
+
+Environment overrides:
+
+```bash
+VIPI_HOST=127.0.0.1 VIPI_PORT=8765 npm run host
+```
+
+## Tailscale
+
+Keep the host on loopback and publish it through Tailscale Serve:
+
+```bash
+tailscale serve --bg http://127.0.0.1:8765
+```
+
+Use `https://<machine>.<tailnet>.ts.net` in Vipi Settings and copy the token from:
+
+```bash
+cat ~/.pi/agent/vipi/token
+```
+
+Do not bind this service publicly. A connected device can ask Pi to execute commands and modify files with your account permissions.
+
+## Load the Pi extension during development
+
+Start the host first, then run Pi with the extension:
+
+```bash
+pi -e /absolute/path/to/vipi-ios/extension/index.ts
+```
+
+Or install the repository as a local Pi package after reviewing it:
+
+```bash
+pi install /absolute/path/to/vipi-ios
+```
+
+The extension does not start a public listener. It connects outbound to `ws://127.0.0.1:8765/ws` and authenticates with the same local token.
+
+## Protocol v1
+
+Client commands currently wired:
+
+- `auth.authenticate`
+- `sessions.list`
+- `session.prompt` (`prompt`, `steer`, `followUp`)
+- `session.abort`
+- `session.history`
+
+Runtime events currently forwarded:
+
+- session registration and state snapshots
+- message streaming and completion
+- tool start, update, and end
+- settled/completed status
+
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for ownership and roadmap details.
+
+## License
+
+MIT

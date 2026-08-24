@@ -1,0 +1,551 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		084869FCADA6F41FDBA35660 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C3A8EBF742CB0B8AA8B141A /* RootView.swift */; };
+		0E721E46F558E733E27EC66A /* MockData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C7C821E21D70BBF06358AE6 /* MockData.swift */; };
+		14CAA51CFCBFFE50D7693061 /* ComposerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70423E51C18BD7963D1288E8 /* ComposerView.swift */; };
+		188A110E5F62E54930B428E5 /* ActivityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3FD97EC8475EDE216CB59E0 /* ActivityView.swift */; };
+		2BF9CF22338B79464BA39B4B /* ChatModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72FF8640084103979F5F7473 /* ChatModels.swift */; };
+		414A19E6F40D0DD5740CEF81 /* VipiApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75B5AAF1B02E8D14B6D7E61F /* VipiApp.swift */; };
+		568FD418BC3F3A8E3D82DEFE /* StatusPill.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51A56E1D0C45CB92DB1FFCDC /* StatusPill.swift */; };
+		679B4EF0DAE79E70208BCBE2 /* SessionModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6246E1CE326A44F6EF0041CB /* SessionModels.swift */; };
+		680465B91548F84E8AB85B56 /* SessionModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 662425F04AF7242E508F30CF /* SessionModelTests.swift */; };
+		8613E2C6CFC95A65A2F7501B /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8630CBCD6D48EAA9D97D225B /* SettingsView.swift */; };
+		88FA779657B240602FA9503C /* SessionListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4C3A37166A3EAB55DEA70D3 /* SessionListView.swift */; };
+		A22F88C8554BCE2B0402AA63 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E239652719F5AEB87D138D0 /* ChatView.swift */; };
+		A75009DA2685A3C4869521A8 /* AppStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B65F32F13938396FA43217F /* AppStore.swift */; };
+		DF80DAD8993074D107CA81D9 /* SessionSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEC9C0D7E27AADAE735504FE /* SessionSheets.swift */; };
+		E7E8A8E073144AEA79E07D36 /* BrokerClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A812CC5591D5944635F89BEA /* BrokerClient.swift */; };
+		E80C9737E6A7F103F93A11B4 /* WireProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C2627C2C6A76D4D798CDE4F /* WireProtocol.swift */; };
+		FFC67D0B2CBD7B285D0A7A1D /* VipiTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEA45577862E5D8092E1F11A /* VipiTheme.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		6CBA8D1DABB96B1898CA1A56 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 3DCE461173E1833A5ABEB98D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5BB33AA2AE31396145E0FE11;
+			remoteInfo = Vipi;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		0C3A8EBF742CB0B8AA8B141A /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		0CFDFFA8E9005F6741B77885 /* Vipi.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Vipi.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		1B65F32F13938396FA43217F /* AppStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStore.swift; sourceTree = "<group>"; };
+		257DD7057C41DF8DA0E70B76 /* VipiTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = VipiTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		3E239652719F5AEB87D138D0 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
+		4C7C821E21D70BBF06358AE6 /* MockData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockData.swift; sourceTree = "<group>"; };
+		51A56E1D0C45CB92DB1FFCDC /* StatusPill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusPill.swift; sourceTree = "<group>"; };
+		6246E1CE326A44F6EF0041CB /* SessionModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionModels.swift; sourceTree = "<group>"; };
+		662425F04AF7242E508F30CF /* SessionModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionModelTests.swift; sourceTree = "<group>"; };
+		70423E51C18BD7963D1288E8 /* ComposerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerView.swift; sourceTree = "<group>"; };
+		72FF8640084103979F5F7473 /* ChatModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatModels.swift; sourceTree = "<group>"; };
+		75B5AAF1B02E8D14B6D7E61F /* VipiApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VipiApp.swift; sourceTree = "<group>"; };
+		8630CBCD6D48EAA9D97D225B /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		9C2627C2C6A76D4D798CDE4F /* WireProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WireProtocol.swift; sourceTree = "<group>"; };
+		A812CC5591D5944635F89BEA /* BrokerClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrokerClient.swift; sourceTree = "<group>"; };
+		AEA45577862E5D8092E1F11A /* VipiTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VipiTheme.swift; sourceTree = "<group>"; };
+		D3FD97EC8475EDE216CB59E0 /* ActivityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityView.swift; sourceTree = "<group>"; };
+		E4C3A37166A3EAB55DEA70D3 /* SessionListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionListView.swift; sourceTree = "<group>"; };
+		EEC9C0D7E27AADAE735504FE /* SessionSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionSheets.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		00BEDA59768483376B9EB8C2 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				72FF8640084103979F5F7473 /* ChatModels.swift */,
+				6246E1CE326A44F6EF0041CB /* SessionModels.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		2A1CBA5573E001778277255E /* Networking */ = {
+			isa = PBXGroup;
+			children = (
+				A812CC5591D5944635F89BEA /* BrokerClient.swift */,
+				9C2627C2C6A76D4D798CDE4F /* WireProtocol.swift */,
+			);
+			path = Networking;
+			sourceTree = "<group>";
+		};
+		3800C896E9C514AF4298186D /* Features */ = {
+			isa = PBXGroup;
+			children = (
+				DEA392FECC056D6CFFE2D0B5 /* Activity */,
+				8AD41713CAD690BEFEDAB79F /* Chat */,
+				5E454E5F8AE314CE3B50D791 /* Sessions */,
+				D10E0FC33F4D139FC4A31786 /* Settings */,
+			);
+			path = Features;
+			sourceTree = "<group>";
+		};
+		4AE8D25370FBB230953E8C74 /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				51A56E1D0C45CB92DB1FFCDC /* StatusPill.swift */,
+			);
+			path = Components;
+			sourceTree = "<group>";
+		};
+		5763F9F8A5A0F05C907C944E /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				0CFDFFA8E9005F6741B77885 /* Vipi.app */,
+				257DD7057C41DF8DA0E70B76 /* VipiTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		5E454E5F8AE314CE3B50D791 /* Sessions */ = {
+			isa = PBXGroup;
+			children = (
+				E4C3A37166A3EAB55DEA70D3 /* SessionListView.swift */,
+			);
+			path = Sessions;
+			sourceTree = "<group>";
+		};
+		5FCB95B3845F9C5EBA217F9D /* Stores */ = {
+			isa = PBXGroup;
+			children = (
+				1B65F32F13938396FA43217F /* AppStore.swift */,
+				4C7C821E21D70BBF06358AE6 /* MockData.swift */,
+			);
+			path = Stores;
+			sourceTree = "<group>";
+		};
+		86A2E914793CF683DFA26B87 /* Vipi */ = {
+			isa = PBXGroup;
+			children = (
+				8C2637C8CBA8AE392DB8F556 /* App */,
+				4AE8D25370FBB230953E8C74 /* Components */,
+				D71D63FA530FA6E4E3B210E5 /* DesignSystem */,
+				3800C896E9C514AF4298186D /* Features */,
+				00BEDA59768483376B9EB8C2 /* Models */,
+				2A1CBA5573E001778277255E /* Networking */,
+				5FCB95B3845F9C5EBA217F9D /* Stores */,
+			);
+			path = Vipi;
+			sourceTree = "<group>";
+		};
+		8AD41713CAD690BEFEDAB79F /* Chat */ = {
+			isa = PBXGroup;
+			children = (
+				3E239652719F5AEB87D138D0 /* ChatView.swift */,
+				70423E51C18BD7963D1288E8 /* ComposerView.swift */,
+				EEC9C0D7E27AADAE735504FE /* SessionSheets.swift */,
+			);
+			path = Chat;
+			sourceTree = "<group>";
+		};
+		8C2637C8CBA8AE392DB8F556 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				0C3A8EBF742CB0B8AA8B141A /* RootView.swift */,
+				75B5AAF1B02E8D14B6D7E61F /* VipiApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		9FFF8A88D620B48F8807944B = {
+			isa = PBXGroup;
+			children = (
+				86A2E914793CF683DFA26B87 /* Vipi */,
+				C6D1A319D849F630CBB90985 /* VipiTests */,
+				5763F9F8A5A0F05C907C944E /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		C6D1A319D849F630CBB90985 /* VipiTests */ = {
+			isa = PBXGroup;
+			children = (
+				662425F04AF7242E508F30CF /* SessionModelTests.swift */,
+			);
+			path = VipiTests;
+			sourceTree = "<group>";
+		};
+		D10E0FC33F4D139FC4A31786 /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				8630CBCD6D48EAA9D97D225B /* SettingsView.swift */,
+			);
+			path = Settings;
+			sourceTree = "<group>";
+		};
+		D71D63FA530FA6E4E3B210E5 /* DesignSystem */ = {
+			isa = PBXGroup;
+			children = (
+				AEA45577862E5D8092E1F11A /* VipiTheme.swift */,
+			);
+			path = DesignSystem;
+			sourceTree = "<group>";
+		};
+		DEA392FECC056D6CFFE2D0B5 /* Activity */ = {
+			isa = PBXGroup;
+			children = (
+				D3FD97EC8475EDE216CB59E0 /* ActivityView.swift */,
+			);
+			path = Activity;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		5BB33AA2AE31396145E0FE11 /* Vipi */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D7E9161BEAE3D1D308A36A99 /* Build configuration list for PBXNativeTarget "Vipi" */;
+			buildPhases = (
+				44F86B7A5667B56786EE7C5A /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Vipi;
+			packageProductDependencies = (
+			);
+			productName = Vipi;
+			productReference = 0CFDFFA8E9005F6741B77885 /* Vipi.app */;
+			productType = "com.apple.product-type.application";
+		};
+		D32991DC072394E0D68E5A09 /* VipiTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BC33CEBE19B3047606E797C7 /* Build configuration list for PBXNativeTarget "VipiTests" */;
+			buildPhases = (
+				BF44A5C5C23A2E273BB801E3 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				2BA2CD85AFCEDF197DAA3CB3 /* PBXTargetDependency */,
+			);
+			name = VipiTests;
+			packageProductDependencies = (
+			);
+			productName = VipiTests;
+			productReference = 257DD7057C41DF8DA0E70B76 /* VipiTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		3DCE461173E1833A5ABEB98D /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 2600;
+				TargetAttributes = {
+					5BB33AA2AE31396145E0FE11 = {
+						ProvisioningStyle = Automatic;
+					};
+					D32991DC072394E0D68E5A09 = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 95187BE8E0BEA03200B97B52 /* Build configuration list for PBXProject "Vipi" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 9FFF8A88D620B48F8807944B;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 5763F9F8A5A0F05C907C944E /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				5BB33AA2AE31396145E0FE11 /* Vipi */,
+				D32991DC072394E0D68E5A09 /* VipiTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		44F86B7A5667B56786EE7C5A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				188A110E5F62E54930B428E5 /* ActivityView.swift in Sources */,
+				A75009DA2685A3C4869521A8 /* AppStore.swift in Sources */,
+				E7E8A8E073144AEA79E07D36 /* BrokerClient.swift in Sources */,
+				2BF9CF22338B79464BA39B4B /* ChatModels.swift in Sources */,
+				A22F88C8554BCE2B0402AA63 /* ChatView.swift in Sources */,
+				14CAA51CFCBFFE50D7693061 /* ComposerView.swift in Sources */,
+				0E721E46F558E733E27EC66A /* MockData.swift in Sources */,
+				084869FCADA6F41FDBA35660 /* RootView.swift in Sources */,
+				88FA779657B240602FA9503C /* SessionListView.swift in Sources */,
+				679B4EF0DAE79E70208BCBE2 /* SessionModels.swift in Sources */,
+				DF80DAD8993074D107CA81D9 /* SessionSheets.swift in Sources */,
+				8613E2C6CFC95A65A2F7501B /* SettingsView.swift in Sources */,
+				568FD418BC3F3A8E3D82DEFE /* StatusPill.swift in Sources */,
+				414A19E6F40D0DD5740CEF81 /* VipiApp.swift in Sources */,
+				FFC67D0B2CBD7B285D0A7A1D /* VipiTheme.swift in Sources */,
+				E80C9737E6A7F103F93A11B4 /* WireProtocol.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BF44A5C5C23A2E273BB801E3 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				680465B91548F84E8AB85B56 /* SessionModelTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		2BA2CD85AFCEDF197DAA3CB3 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5BB33AA2AE31396145E0FE11 /* Vipi */;
+			targetProxy = 6CBA8D1DABB96B1898CA1A56 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		039FB6C44C0692958F3CAD2C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Vipi.app/Vipi";
+			};
+			name = Debug;
+		};
+		2281D8077F82CCE8C8EDE471 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Vipi;
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Vipi connects to your Pi sessions through your private Tailscale network.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.vipi.ios;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		8536840C84AB38C3BC2F2297 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_NAME = Vipi;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		86B09C46D8DC0E088975D012 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Vipi;
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Vipi connects to your Pi sessions through your private Tailscale network.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.vipi.ios;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		D14901BB428761C45A972830 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_NAME = Vipi;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		DDCC477C1FDBFFE4AA8DB4C9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Vipi.app/Vipi";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		95187BE8E0BEA03200B97B52 /* Build configuration list for PBXProject "Vipi" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2281D8077F82CCE8C8EDE471 /* Debug */,
+				86B09C46D8DC0E088975D012 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		BC33CEBE19B3047606E797C7 /* Build configuration list for PBXNativeTarget "VipiTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				039FB6C44C0692958F3CAD2C /* Debug */,
+				DDCC477C1FDBFFE4AA8DB4C9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		D7E9161BEAE3D1D308A36A99 /* Build configuration list for PBXNativeTarget "Vipi" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8536840C84AB38C3BC2F2297 /* Debug */,
+				D14901BB428761C45A972830 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 3DCE461173E1833A5ABEB98D /* Project object */;
+}

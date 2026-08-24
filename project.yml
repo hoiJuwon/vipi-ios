@@ -1,0 +1,40 @@
+name: Vipi
+options:
+  bundleIdPrefix: dev.vipi
+  deploymentTarget:
+    iOS: "18.0"
+  xcodeVersion: "26.0"
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    PRODUCT_BUNDLE_IDENTIFIER: dev.vipi.ios
+    MARKETING_VERSION: 0.1.0
+    CURRENT_PROJECT_VERSION: 1
+    CODE_SIGN_STYLE: Automatic
+    GENERATE_INFOPLIST_FILE: YES
+    INFOPLIST_KEY_CFBundleDisplayName: Vipi
+    INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+    INFOPLIST_KEY_UILaunchScreen_Generation: YES
+    INFOPLIST_KEY_NSLocalNetworkUsageDescription: Vipi connects to your Pi sessions through your private Tailscale network.
+    INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait
+    ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS: YES
+targets:
+  Vipi:
+    type: application
+    platform: iOS
+    sources:
+      - path: Vipi
+    settings:
+      base:
+        PRODUCT_NAME: Vipi
+        TARGETED_DEVICE_FAMILY: "1,2"
+    scheme:
+      testTargets:
+        - VipiTests
+  VipiTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: VipiTests
+    dependencies:
+      - target: Vipi
