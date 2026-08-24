@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
 import WebSocket from "ws";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { normalizeHistory, normalizeMessage, normalizeToolEvent } from "../src/normalization.js";
 
 const protocolVersion = 1;
@@ -195,6 +196,74 @@ test("routes prompt modes, abort, history, responses, and tool events", async ()
   assert.equal(tool.payload.event.kind, "tool");
   mobile.close();
   runtime.close();
+});
+
+test("runs the real Pi extension through broker registration, history, controls, streaming, and tools", async () => {
+  process.env.PI_CODING_AGENT_DIR = directory;
+  process.env.VIPI_BROKER_URL = `ws://127.0.0.1:${port}/ws`;
+  const handlers = new Map<string, (event: any, context: ExtensionContext) => Promise<void>>();
+  const delivered: Array<{ text: string; delivery?: string }> = [];
+  let aborted = false;
+  let compacted = false;
+  const branch = [
+    { id: "real-1", parentId: null, timestamp: "2026-08-24T00:00:00Z", type: "message", message: { role: "user", content: "real history", timestamp: 1 } },
+    { id: "real-2", parentId: "real-1", timestamp: "2026-08-24T00:00:01Z", type: "message", message: { role: "toolResult", toolCallId: "real-tool", toolName: "read", content: [{ type: "text", text: "result" }], isError: false, timestamp: 2 } },
+  ];
+  const context = {
+    cwd: "/tmp/real-extension",
+    model: { id: "fixture-model", name: "Fixture Model" },
+    sessionManager: {
+      getSessionId: () => "real-extension",
+      getSessionFile: () => "/tmp/real-extension.jsonl",
+      getBranch: () => branch,
+    },
+    getContextUsage: () => ({ percent: 25 }),
+    abort: () => { aborted = true; },
+    compact: () => { compacted = true; },
+  } as unknown as ExtensionContext;
+  const api = {
+    on: (name: string, handler: (event: any, ctx: ExtensionContext) => Promise<void>) => { handlers.set(name, handler); },
+    getSessionName: () => "Real / Extension",
+    getThinkingLevel: () => "medium",
+    sendUserMessage: (text: string, options?: { deliverAs?: string }) => delivered.push({ text, ...(options?.deliverAs ? { delivery: options.deliverAs } : {}) }),
+  } as unknown as ExtensionAPI;
+  const extension = (await import("../../extension/index.js")).default;
+  extension(api);
+  await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, context);
+
+  const mobile = await connect();
+  send(mobile, "auth.authenticate", { token }, "real-auth");
+  await receiveType(mobile, "auth.ok");
+  const snapshot = await receiveType(mobile, "sessions.snapshot");
+  assert.ok(snapshot.payload.sessions.some((session: { id: string }) => session.id === "real-extension"));
+
+  send(mobile, "session.history", { sessionID: "real-extension" }, "real-history");
+  const history = await receiveType(mobile, "session.response");
+  assert.equal(history.payload.result.events[0].text, "real history");
+  assert.equal(history.payload.result.events[1].kind, "tool");
+
+  for (const [id, delivery] of [["prompt", "prompt"], ["steer", "steer"], ["follow", "followUp"]] as const) {
+    send(mobile, "session.prompt", { sessionID: "real-extension", text: id, delivery }, `real-${id}`);
+    await receiveType(mobile, "session.response");
+  }
+  assert.deepEqual(delivered, [{ text: "prompt" }, { text: "steer", delivery: "steer" }, { text: "follow", delivery: "followUp" }]);
+  send(mobile, "session.abort", { sessionID: "real-extension" }, "real-abort");
+  await receiveType(mobile, "session.response");
+  send(mobile, "session.compact", { sessionID: "real-extension" }, "real-compact");
+  await receiveType(mobile, "session.response");
+  assert.equal(aborted, true);
+  assert.equal(compacted, true);
+
+  const assistant = { role: "assistant", content: [{ type: "text", text: "live real extension" }], timestamp: Date.now() };
+  await handlers.get("message_update")?.({ type: "message_update", message: assistant, assistantMessageEvent: { type: "text_delta", delta: "live" } }, context);
+  const live = await receiveType(mobile, "session.event");
+  assert.equal(live.payload.event.text, "live real extension");
+  await handlers.get("tool_execution_end")?.({ type: "tool_execution_end", toolCallId: "live-tool", toolName: "read", result: "ok", isError: false }, context);
+  const tool = await receiveType(mobile, "session.event");
+  assert.equal(tool.payload.event.kind, "tool");
+  assert.equal(tool.payload.event.state, "succeeded");
+  await handlers.get("session_shutdown")?.({ type: "session_shutdown", reason: "quit" }, context);
+  mobile.close();
 });
 
 test("rotates tokens atomically, revokes peers, and does not log bearer secrets", async () => {
