@@ -57,9 +57,17 @@ final class VipiUITests: XCTestCase {
     func testPairingAndConnectionControlsAreAccessible() {
         app.tabBars.buttons["Settings"].tap()
         XCTAssertTrue(app.secureTextFields["settings.pairingPayload"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.textFields["settings.host"].exists)
-        XCTAssertTrue(app.secureTextFields["settings.token"].exists)
-        XCTAssertTrue(app.buttons["settings.connect"].exists)
-        XCTAssertTrue(app.buttons["settings.rotateToken"].exists)
+        XCTAssertTrue(scrollToExistence(app.textFields["settings.host"]))
+        XCTAssertTrue(scrollToExistence(app.secureTextFields["settings.token"]))
+        XCTAssertTrue(scrollToExistence(app.buttons["settings.connect"]))
+        XCTAssertTrue(scrollToExistence(app.buttons["settings.rotateToken"]))
+    }
+
+    private func scrollToExistence(_ element: XCUIElement) -> Bool {
+        for _ in 0..<6 {
+            if element.exists { return true }
+            app.swipeUp()
+        }
+        return element.exists
     }
 }

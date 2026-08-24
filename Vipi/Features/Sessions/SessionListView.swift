@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SessionListView: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var searchText = ""
 
     var body: some View {
@@ -42,10 +43,20 @@ struct SessionListView: View {
             Text("Pick up any tmux session without leaving the conversation.")
                 .font(.subheadline)
                 .foregroundStyle(VipiTheme.secondary)
-            HStack(spacing: 16) {
-                metric("\(store.sessions.filter { $0.phase == .working }.count)", "running")
-                metric("\(store.sessions.filter(\.unread).count)", "unread")
-                metric("\(store.workspaceGroups.count)", "workspaces")
+            Group {
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 8) {
+                        metric("\(store.sessions.filter { $0.phase == .working }.count)", "running")
+                        metric("\(store.sessions.filter(\.unread).count)", "unread")
+                        metric("\(store.workspaceGroups.count)", "workspaces")
+                    }
+                } else {
+                    HStack(spacing: 16) {
+                        metric("\(store.sessions.filter { $0.phase == .working }.count)", "running")
+                        metric("\(store.sessions.filter(\.unread).count)", "unread")
+                        metric("\(store.workspaceGroups.count)", "workspaces")
+                    }
+                }
             }
             .padding(.top, 4)
         }
