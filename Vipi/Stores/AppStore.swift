@@ -60,6 +60,16 @@ final class AppStore {
             connectionState = .disconnected("Host and token are required")
             return
         }
+        do {
+            let endpoint = try TailscaleEndpoint.parse(
+                host,
+                allowsInsecureLocalhostForUITesting: allowsInsecureLocalhostForUITesting
+            )
+            host = endpoint.publicURL.absoluteString
+        } catch {
+            connectionState = .disconnected(error.localizedDescription)
+            return
+        }
         connectionState = .connecting
         do {
             await broker.setEnvelopeHandler { [weak self] envelope in

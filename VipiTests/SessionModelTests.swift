@@ -31,6 +31,14 @@ final class SessionModelTests: XCTestCase {
         XCTAssertEqual(store.messages(for: "wire")[0].tools.first?.state, .succeeded)
     }
 
+    @MainActor func testProductionConnectRejectsInsecureHostBeforeBroker() async {
+        let store = AppStore()
+        store.host = "http://public.example.com"
+        store.token = String(repeating: "t", count: 43)
+        await store.connect()
+        XCTAssertEqual(store.connectionState, .disconnected("Vipi requires an HTTPS .ts.net Tailscale host."))
+    }
+
     @MainActor func testProductionStoreStartsEmptyAndDisconnected() {
         let store = AppStore()
         XCTAssertTrue(store.sessions.isEmpty)
