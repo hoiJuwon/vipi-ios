@@ -25,18 +25,12 @@ Tailnet device
   → user account tools/files
 ```
 
-The device token is defense in depth in addition to tailnet membership. Production hardening still needs Keychain persistence in the app, token rotation/pairing UI, Tailscale identity verification, request rate limits, command auditing, and payload redaction.
+The device token is defense in depth in addition to tailnet membership. The app persists it as a this-device-only Keychain item and supports authenticated rotation. The host enforces loopback binding by default, rate limits sockets, never logs payloads or bearer values, and is intended to sit behind tailnet-only Tailscale Serve. Commands are allowlisted and correlated without opening a second session writer.
 
 ## Protocol evolution
 
-Every envelope carries `protocolVersion`. Unknown event types are ignored by the app. Durable reconnect will use monotonically increasing `seq` and a host-side bounded replay buffer. Full history is recovered from the active extension's `SessionManager` rather than replaying terminal pixels.
+Every envelope carries `protocolVersion`. Unknown event types are ignored by the app. Durable reconnect uses monotonically increasing `seq` with a host-side bounded replay buffer. Full and incremental history are normalized from the active extension's `SessionManager`, including assistant tool calls and `toolResult` message entries, rather than replaying terminal pixels.
 
-## Next implementation slices
+## Deliberate future scope
 
-1. Normalize Pi `message_update`, `message_end`, and tool events into typed chat deltas.
-2. Implement `session.history` reducer and reconnect using last entry ID.
-3. Add QR pairing and Keychain-backed token storage.
-4. Add model/thinking/compact/rename commands.
-5. Add blocking extension UI cards for select, confirm, input, and editor.
-6. Add offline saved-session catalog and ownership-gated RPC workers.
-7. Add launchd service setup and verified Tailscale Serve identity.
+Offline saved-session ownership and blocking extension UI cards are not exposed as controls in this release. They require explicit ownership leases and a separately designed mobile interaction protocol; placeholder controls are intentionally absent.
