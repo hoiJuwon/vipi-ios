@@ -54,9 +54,10 @@ wss.on("connection", (socket) => {
       if (message.type === "auth.authenticate" && tokenMatches(token, message.payload?.token)) {
         role = "mobile"; mobileClients.add(socket); clearTimeout(authTimer);
         const lastSeq = typeof message.payload?.lastSeq === "number" ? message.payload.lastSeq : undefined;
+        const brokerHead = sequence;
         socket.send(JSON.stringify(envelope("auth.ok", { role }, message.id, ++sequence)));
-        const oldestSeq = replayBuffer[0]?.seq ?? sequence;
-        if (lastSeq !== undefined && lastSeq >= oldestSeq - 1) {
+        const oldestSeq = replayBuffer[0]?.seq ?? brokerHead;
+        if (lastSeq !== undefined && lastSeq >= oldestSeq - 1 && lastSeq <= brokerHead) {
           for (const item of replayBuffer) if ((item.seq ?? 0) > lastSeq) socket.send(JSON.stringify(item));
         } else {
           socket.send(JSON.stringify(envelope("sessions.snapshot", { sessions: mergedSessions(), replayReset: lastSeq !== undefined }, undefined, ++sequence)));

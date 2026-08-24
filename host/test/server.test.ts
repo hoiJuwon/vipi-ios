@@ -166,6 +166,17 @@ test("replays missed normalized runtime events from a sequence cursor", async ()
   runtime.close();
 });
 
+test("resets stale state when reconnect cursor is above the broker head", async () => {
+  const mobile = await connect();
+  send(mobile, "auth.authenticate", { token, lastSeq: 1_000_000 }, "future-cursor-auth");
+  assert.equal((await receive(mobile)).type, "auth.ok");
+  const snapshot = await receive(mobile);
+  assert.equal(snapshot.type, "sessions.snapshot");
+  assert.equal(snapshot.payload.replayReset, true);
+  assert.ok(Array.isArray(snapshot.payload.sessions));
+  mobile.close();
+});
+
 test("routes prompt modes, abort, history, responses, and tool events", async () => {
   const runtime = await connect();
   send(runtime, "runtime.register", { token, session: {
