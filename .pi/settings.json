@@ -1,5 +1,6 @@
 {
   "packages": [
-    "npm:pi-goal-x@0.30.0"
+    "npm:pi-goal-x@0.30.0",
+    "npm:pi-xcode-mcp@0.1.0"
   ]
 }

@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "ios-simulator": {
+      "command": "npx",
+      "args": ["-y", "ios-simulator-mcp@2.1.0"],
+      "lifecycle": "lazy-keep-alive",
+      "requestTimeoutMs": 60000,
+      "directTools": ["get_booted_sim_id", "open_simulator", "ui_describe_all", "ui_find_element", "ui_tap", "ui_type", "ui_swipe", "ui_view", "screenshot", "install_app", "launch_app", "terminate_app"]
+    }
+  }
+}
