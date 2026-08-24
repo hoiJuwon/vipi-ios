@@ -22,6 +22,7 @@ struct ComposerView: View {
             HStack(alignment: .bottom, spacing: 10) {
                 TextField("Message Pi…", text: $draft, axis: .vertical)
                     .accessibilityIdentifier("chat.composer")
+                    .accessibilityLabel("Message Pi")
                     .lineLimit(1...6)
                     .padding(.horizontal, 14).padding(.vertical, 11)
                     .vipiGlass(interactive: true, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
@@ -37,6 +38,8 @@ struct ComposerView: View {
                 }
                 .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .accessibilityIdentifier("chat.send")
+                .accessibilityLabel("Send message")
+                .accessibilityHint(phase == .working ? "Delivers using the selected queue or steer mode" : "Sends a prompt to Pi")
             }
         }
         .padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 8)

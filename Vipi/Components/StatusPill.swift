@@ -13,6 +13,9 @@ struct StatusPill: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .vipiGlass(tint: phase.color.opacity(0.18), in: Capsule())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Session status")
+        .accessibilityValue(phase.label)
     }
 }
 
@@ -25,6 +28,10 @@ struct ConnectionCapsule: View {
             Text(label).font(.caption.weight(.medium))
         }
         .foregroundStyle(color)
+        .accessibilityElement(children: .ignore)
+        .accessibilityIdentifier("connection.status")
+        .accessibilityLabel("Connection")
+        .accessibilityValue(label)
     }
 
     private var label: String {

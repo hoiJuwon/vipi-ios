@@ -88,6 +88,9 @@ struct SessionListView: View {
                     NavigationLink(value: session) { SessionRow(session: session) }
                         .buttonStyle(.plain)
                         .accessibilityIdentifier("session.\(session.id)")
+                        .accessibilityLabel(session.name)
+                        .accessibilityValue("\(session.phase.label), \(session.model)\(session.unread ? ", unread" : "")")
+                        .accessibilityHint("Opens the session transcript")
                     if index < group.sessions.count - 1 {
                         Divider().overlay(VipiTheme.stroke).padding(.leading, 58)
                     }

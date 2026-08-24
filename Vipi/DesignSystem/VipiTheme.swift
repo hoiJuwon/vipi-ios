@@ -1,20 +1,46 @@
 import SwiftUI
+import UIKit
 
 enum VipiTheme {
-    static let canvas = Color(hex: 0x070A12)
-    static let surface = Color.white.opacity(0.055)
-    static let elevated = Color.white.opacity(0.08)
-    static let stroke = Color.white.opacity(0.12)
-    static let highlight = Color.white.opacity(0.22)
-    static let primary = Color(hex: 0xF7F8FC)
-    static let secondary = Color(hex: 0xA8AFC0)
-    static let accent = Color(hex: 0x9B8CFF)
+    static let canvas = adaptive(light: 0xF4F7FB, dark: 0x070A12)
+    static let surface = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark ? UIColor.white.withAlphaComponent(0.055) : UIColor.black.withAlphaComponent(0.035)
+    })
+    static let elevated = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark ? UIColor.white.withAlphaComponent(0.08) : UIColor.white.withAlphaComponent(0.72)
+    })
+    static let stroke = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark ? UIColor.white.withAlphaComponent(0.12) : UIColor.black.withAlphaComponent(0.12)
+    })
+    static let highlight = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark ? UIColor.white.withAlphaComponent(0.22) : UIColor.white.withAlphaComponent(0.9)
+    })
+    static let primary = Color.primary
+    static let secondary = Color.secondary
+    static let accent = adaptive(light: 0x6557D8, dark: 0x9B8CFF)
     static let cyan = Color(hex: 0x61D9F0)
     static let success = Color(hex: 0x58D68D)
     static let warning = Color(hex: 0xF7C65F)
     static let danger = Color(hex: 0xFF7272)
 
     static let cardRadius: CGFloat = 18
+
+    private static func adaptive(light: UInt, dark: UInt) -> Color {
+        Color(uiColor: UIColor { traits in
+            UIColor(hex: traits.userInterfaceStyle == .dark ? dark : light)
+        })
+    }
+}
+
+private extension UIColor {
+    convenience init(hex: UInt) {
+        self.init(
+            red: CGFloat((hex >> 16) & 0xff) / 255,
+            green: CGFloat((hex >> 8) & 0xff) / 255,
+            blue: CGFloat(hex & 0xff) / 255,
+            alpha: 1
+        )
+    }
 }
 
 extension Color {

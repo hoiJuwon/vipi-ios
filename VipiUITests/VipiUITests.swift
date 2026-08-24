@@ -17,6 +17,9 @@ final class VipiUITests: XCTestCase {
     func testOpenSessionAndSendPrompt() {
         let session = app.buttons["session.mobile"]
         XCTAssertTrue(session.waitForExistence(timeout: 5))
+        XCTAssertEqual(session.label, "개발 / 모바일 세션 앱")
+        XCTAssertTrue((session.value as? String)?.contains("Working") == true)
+        XCTAssertTrue(session.isHittable)
         session.tap()
 
         let composer = app.textFields["chat.composer"]
@@ -54,13 +57,51 @@ final class VipiUITests: XCTestCase {
         abort.tap()
     }
 
+    func testVoiceOverSemanticsAndNavigation() {
+        let connection = app.otherElements["connection.status"].firstMatch
+        XCTAssertTrue(connection.waitForExistence(timeout: 5))
+        XCTAssertEqual(connection.label, "Connection")
+        XCTAssertFalse((connection.value as? String ?? "").isEmpty)
+
+        let session = app.buttons["session.mobile"]
+        XCTAssertTrue(scrollToHittable(session))
+        session.tap()
+        let transcript = app.scrollViews["chat.transcript"]
+        XCTAssertTrue(transcript.waitForExistence(timeout: 5))
+        let composer = app.textFields["chat.composer"]
+        XCTAssertEqual(composer.label, "Message Pi")
+        XCTAssertTrue(composer.isHittable)
+        let send = app.buttons["chat.send"]
+        XCTAssertEqual(send.label, "Send message")
+        XCTAssertFalse(send.isEnabled)
+        let tool = app.buttons.matching(NSPredicate(format: "label == %@", "Tool read")).firstMatch
+        for _ in 0..<8 where !tool.exists { transcript.swipeUp() }
+        XCTAssertTrue(tool.waitForExistence(timeout: 5))
+        XCTAssertTrue((tool.value as? String)?.contains("succeeded") == true)
+        XCTAssertTrue(app.buttons["chat.menu"].isHittable)
+    }
+
     func testPairingAndConnectionControlsAreAccessible() {
         app.tabBars.buttons["Settings"].tap()
         XCTAssertTrue(app.secureTextFields["settings.pairingPayload"].waitForExistence(timeout: 5))
         XCTAssertTrue(scrollToExistence(app.textFields["settings.host"]))
         XCTAssertTrue(scrollToExistence(app.secureTextFields["settings.token"]))
-        XCTAssertTrue(scrollToExistence(app.buttons["settings.connect"]))
-        XCTAssertTrue(scrollToExistence(app.buttons["settings.rotateToken"]))
+        let connect = app.buttons["settings.connect"]
+        XCTAssertTrue(scrollToExistence(connect))
+        XCTAssertEqual(connect.label, "Connect securely")
+        XCTAssertTrue(connect.isHittable)
+        let rotate = app.buttons["settings.rotateToken"]
+        XCTAssertTrue(scrollToExistence(rotate))
+        XCTAssertEqual(rotate.label, "Rotate device token")
+        XCTAssertFalse(rotate.isEnabled)
+    }
+
+    private func scrollToHittable(_ element: XCUIElement) -> Bool {
+        for _ in 0..<10 {
+            if element.isHittable { return true }
+            app.swipeUp()
+        }
+        return element.isHittable
     }
 
     private func scrollToExistence(_ element: XCUIElement) -> Bool {

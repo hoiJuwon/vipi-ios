@@ -171,6 +171,9 @@ private struct ToolCard: View {
             .overlay { RoundedRectangle(cornerRadius: 14).stroke(VipiTheme.stroke, lineWidth: 0.75) }
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Tool \(tool.name)")
+        .accessibilityValue("\(tool.state.rawValue), \(tool.summary)")
+        .accessibilityHint(expanded ? "Collapses tool details" : "Expands tool details")
     }
 
     private var icon: String { tool.state == .running ? "gearshape.2.fill" : tool.state == .failed ? "xmark.circle.fill" : "checkmark.circle.fill" }

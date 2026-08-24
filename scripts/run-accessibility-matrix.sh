@@ -12,7 +12,8 @@ run_case() {
   sleep 1
   xcrun simctl io "$UDID" screenshot "$OUT/$name.png" >/dev/null
   xcodebuild -project Vipi.xcodeproj -scheme Vipi -destination "$DESTINATION" test-without-building \
-    -only-testing:VipiUITests/VipiUITests/testPairingAndConnectionControlsAreAccessible >"$OUT/$name.log" 2>&1
+    -only-testing:VipiUITests/VipiUITests/testPairingAndConnectionControlsAreAccessible \
+    -only-testing:VipiUITests/VipiUITests/testVoiceOverSemanticsAndNavigation >"$OUT/$name.log" 2>&1
   printf '%s: PASS\n' "$name" | tee -a "$OUT/results.txt"
 }
 reset() {
@@ -38,4 +39,16 @@ set_pref ReduceMotionEnabled false
 set_pref ReduceTransparencyEnabled true; run_case reduce-transparency
 set_pref ReduceTransparencyEnabled false
 set_pref VoiceOverTouchEnabled true; run_case voiceover
+python3 - "$OUT/light.png" "$OUT/dark.png" <<'PY' | tee -a "$OUT/results.txt"
+from PIL import Image, ImageStat
+import sys
+values=[]
+for path in sys.argv[1:]:
+    image=Image.open(path).convert("RGB").resize((120, 260))
+    values.append(sum(ImageStat.Stat(image).mean) / 3)
+light, dark = values
+if light < dark + 35:
+    raise SystemExit(f"appearance pixel assertion failed: light={light:.1f}, dark={dark:.1f}")
+print(f"appearance pixels: PASS (light luminance {light:.1f}, dark {dark:.1f})")
+PY
 cat "$OUT/results.txt"
