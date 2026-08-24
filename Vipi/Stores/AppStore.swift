@@ -20,6 +20,7 @@ final class AppStore {
     private let allowsInsecureLocalhostForUITesting: Bool
     private var lastEntryBySession: [String: String] = [:]
     private var pendingHistoryRequests: [String: String] = [:]
+    private var historyRequestsInFlight: Set<String> = []
 
     init(
         broker: BrokerClient = BrokerClient(),
@@ -52,6 +53,11 @@ final class AppStore {
     }
 
     func session(id: String) -> RemoteSession? { sessions.first { $0.id == id } }
+    func lastEntryForTesting(sessionID: String) -> String? { lastEntryBySession[sessionID] }
+    func registerHistoryRequestForTesting(id: String, sessionID: String) {
+        pendingHistoryRequests[id] = sessionID
+        historyRequestsInFlight.insert(sessionID)
+    }
     func messages(for id: String) -> [ChatMessage] { messagesBySession[id] ?? [] }
     func branches(for id: String) -> [BranchNode] { branchesBySession[id] ?? [] }
 
@@ -171,6 +177,7 @@ final class AppStore {
     }
 
     private func requestHistory(for sessionID: String) async {
+        guard historyRequestsInFlight.insert(sessionID).inserted else { return }
         do {
             let requestID = try await broker.send(
                 type: "session.history",
@@ -178,6 +185,7 @@ final class AppStore {
             )
             pendingHistoryRequests[requestID] = sessionID
         } catch {
+            historyRequestsInFlight.remove(sessionID)
             connectionState = .disconnected(error.localizedDescription)
         }
     }
@@ -204,7 +212,15 @@ final class AppStore {
                 isStreaming: event.streaming ?? false
             )
             var messages = messagesBySession[sessionID, default: []]
-            if let index = messages.firstIndex(where: { $0.id == message.id }) {
+            let replacementIndex = event.replacesMessageID.flatMap { replacedID in
+                messages.firstIndex(where: { $0.id == replacedID })
+            }
+            let stableIndex = messages.firstIndex(where: { $0.id == message.id })
+            let semanticIndex = messages.firstIndex(where: {
+                $0.role == message.role && $0.text == message.text &&
+                abs($0.timestamp.timeIntervalSince(message.timestamp)) < 5
+            })
+            if let index = replacementIndex ?? stableIndex ?? semanticIndex {
                 var updated = message
                 updated.tools = messages[index].tools
                 messages[index] = updated
@@ -222,7 +238,13 @@ final class AppStore {
             if messages.isEmpty || messages.last?.role == .user {
                 messages.append(ChatMessage(id: "tools-\(toolCallID)", role: .assistant, text: "", timestamp: .now))
             }
-            guard let messageIndex = messages.indices.last else { return }
+            let existingToolMessageIndex = messages.firstIndex(where: { message in
+                message.tools.contains(where: { $0.id == tool.id })
+            })
+            let entryMessageIndex = event.entryID.flatMap { entryID in
+                messages.firstIndex(where: { $0.id == entryID })
+            }
+            guard let messageIndex = existingToolMessageIndex ?? entryMessageIndex ?? messages.indices.last else { return }
             if let toolIndex = messages[messageIndex].tools.firstIndex(where: { $0.id == tool.id }) {
                 messages[messageIndex].tools[toolIndex] = tool
             } else {
@@ -276,7 +298,13 @@ final class AppStore {
                 let data = try JSONEncoder().encode(payload)
                 let decoder = JSONDecoder()
                 decoder.dateDecodingStrategy = .iso8601
-                sessions = try decoder.decode(SessionSnapshot.self, from: data).sessions
+                let snapshot = try decoder.decode(SessionSnapshot.self, from: data)
+                if snapshot.replayReset == true {
+                    lastEntryBySession.removeAll()
+                    pendingHistoryRequests.removeAll()
+                    historyRequestsInFlight.removeAll()
+                }
+                sessions = snapshot.sessions
                 for session in sessions where session.phase != .offline {
                     Task { await requestHistory(for: session.id) }
                 }
@@ -300,6 +328,7 @@ final class AppStore {
                 }
             }
             if let id = envelope.id, let sessionID = pendingHistoryRequests.removeValue(forKey: id) {
+                historyRequestsInFlight.remove(sessionID)
                 reduceHistoryResponse(payload, sessionID: sessionID)
             }
             return
@@ -313,6 +342,7 @@ final class AppStore {
 
 private struct SessionSnapshot: Decodable {
     let sessions: [RemoteSession]
+    let replayReset: Bool?
 }
 
 private struct HistoryPayload: Encodable {
@@ -348,6 +378,7 @@ private struct NormalizedEvent: Decodable {
     let summary: String?
     let detail: String?
     let entryID: String?
+    let replacesMessageID: String?
 }
 
 private struct EmptyPayload: Encodable {}

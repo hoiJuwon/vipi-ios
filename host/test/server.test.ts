@@ -219,6 +219,41 @@ test("routes prompt modes, abort, history, responses, and tool events", async ()
   runtime.close();
 });
 
+test("allows sustained runtime streaming above the mobile command rate", async () => {
+  const runtime = await connect();
+  send(runtime, "runtime.register", { token, session: {
+    id: "sustained", name: "Sustained", cwd: "/tmp/sustained", phase: "working", unread: false,
+    lastActivityAt: new Date().toISOString(), model: "Pi", thinkingLevel: "medium", contextPercent: 1,
+    tmux: { session: "sustained", window: "1", paneID: "%3" },
+  } });
+  const mobile = await connect();
+  send(mobile, "auth.authenticate", { token }, "sustained-auth");
+  await receiveType(mobile, "auth.ok");
+  await receiveType(mobile, "sessions.snapshot");
+  for (let index = 0; index < 250; index++) {
+    send(runtime, "runtime.event", { sessionID: "sustained", event: {
+      kind: "message", messageID: "sustained-message", role: "assistant", text: `chunk-${index}`,
+      timestamp: new Date().toISOString(), streaming: true,
+    } });
+  }
+  let last: Record<string, any> | undefined;
+  for (let index = 0; index < 250; index++) last = await receiveType(mobile, "session.event");
+  assert.equal(last?.payload.event.text, "chunk-249");
+  assert.equal(runtime.readyState, WebSocket.OPEN);
+  mobile.close();
+  runtime.close();
+});
+
+test("still rate limits authenticated mobile command abuse", async () => {
+  const mobile = await connect();
+  send(mobile, "auth.authenticate", { token }, "limited-auth");
+  await receiveType(mobile, "auth.ok");
+  await receiveType(mobile, "sessions.snapshot");
+  const closed = new Promise<number>((resolve) => mobile.once("close", (code) => resolve(code)));
+  for (let index = 0; index < 140; index++) send(mobile, "sessions.list", {}, `list-${index}`);
+  assert.equal(await closed, 4008);
+});
+
 test("runs the real Pi extension through broker registration, history, controls, streaming, and tools", async () => {
   process.env.PI_CODING_AGENT_DIR = directory;
   process.env.VIPI_BROKER_URL = `ws://127.0.0.1:${port}/ws`;
@@ -226,7 +261,7 @@ test("runs the real Pi extension through broker registration, history, controls,
   const delivered: Array<{ text: string; delivery?: string }> = [];
   let aborted = false;
   let compacted = false;
-  const branch = [
+  const branch: any[] = [
     { id: "real-1", parentId: null, timestamp: "2026-08-24T00:00:00Z", type: "message", message: { role: "user", content: "real history", timestamp: 1 } },
     { id: "real-2", parentId: "real-1", timestamp: "2026-08-24T00:00:01Z", type: "message", message: { role: "toolResult", toolCallId: "real-tool", toolName: "read", content: [{ type: "text", text: "result" }], isError: false, timestamp: 2 } },
   ];
@@ -279,6 +314,11 @@ test("runs the real Pi extension through broker registration, history, controls,
   await handlers.get("message_update")?.({ type: "message_update", message: assistant, assistantMessageEvent: { type: "text_delta", delta: "live" } }, context);
   const live = await receiveType(mobile, "session.event");
   assert.equal(live.payload.event.text, "live real extension");
+  branch.push({ id: "real-live-entry", parentId: "real-2", timestamp: new Date().toISOString(), type: "message", message: assistant });
+  await handlers.get("message_end")?.({ type: "message_end", message: assistant }, context);
+  const settled = await receiveType(mobile, "session.event");
+  assert.equal(settled.payload.event.messageID, "real-live-entry");
+  assert.equal(settled.payload.event.replacesMessageID, live.payload.event.messageID);
   await handlers.get("tool_execution_end")?.({ type: "tool_execution_end", toolCallId: "live-tool", toolName: "read", result: "ok", isError: false }, context);
   const tool = await receiveType(mobile, "session.event");
   assert.equal(tool.payload.event.kind, "tool");

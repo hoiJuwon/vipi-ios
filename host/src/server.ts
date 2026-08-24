@@ -18,6 +18,9 @@ const pairingPayload = process.env.VIPI_SHOW_PAIRING_QR === "1"
   : undefined;
 let sequence = 0;
 const replayLimit = Math.max(100, Number(process.env.VIPI_REPLAY_LIMIT ?? "1000"));
+const unauthenticatedRateLimit = Math.max(10, Number(process.env.VIPI_UNAUTHENTICATED_RATE_LIMIT ?? "30"));
+const mobileRateLimit = Math.max(30, Number(process.env.VIPI_MOBILE_RATE_LIMIT ?? "120"));
+const runtimeRateLimit = Math.max(1_000, Number(process.env.VIPI_RUNTIME_RATE_LIMIT ?? "12000"));
 const replayBuffer: Envelope[] = [];
 const mobileClients = new Set<WebSocket>();
 const runtimes = new Map<string, WebSocket>();
@@ -44,7 +47,8 @@ wss.on("connection", (socket) => {
   socket.on("message", (raw) => {
     const now = Date.now();
     if (now - rateWindowStarted >= 60_000) { rateWindowStarted = now; rateCount = 0; }
-    if (++rateCount > 120) { socket.close(4008, "rate limit exceeded"); return; }
+    const rateLimit = role === "runtime" ? runtimeRateLimit : role === "mobile" ? mobileRateLimit : unauthenticatedRateLimit;
+    if (++rateCount > rateLimit) { socket.close(4008, "rate limit exceeded"); return; }
     let message: Envelope<Record<string, unknown>>;
     try { message = JSON.parse(raw.toString()) as Envelope<Record<string, unknown>>; }
     catch { socket.send(JSON.stringify(envelope("error", { code: "BAD_JSON" }))); return; }

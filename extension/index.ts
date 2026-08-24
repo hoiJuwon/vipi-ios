@@ -42,6 +42,18 @@ export default function vipiBridge(pi: ExtensionAPI) {
     return { session: process.env.TMUX ? "tmux" : "standalone", window: "?", paneID };
   }
 
+  function persistedMessageID(message: unknown, ctx: ExtensionContext): string | undefined {
+    const candidate = message as { role?: unknown; timestamp?: unknown; content?: unknown };
+    for (const entry of [...ctx.sessionManager.getBranch()].reverse()) {
+      if (entry.type !== "message") continue;
+      if (entry.message === message) return entry.id;
+      const persisted = entry.message as { role?: unknown; timestamp?: unknown; content?: unknown };
+      if (persisted.role === candidate.role && persisted.timestamp === candidate.timestamp &&
+          JSON.stringify(persisted.content) === JSON.stringify(candidate.content)) return entry.id;
+    }
+    return undefined;
+  }
+
   function send(type: string, payload: unknown) {
     if (runtime.socket?.readyState === WebSocket.OPEN) {
       runtime.socket.send(JSON.stringify({ type, protocolVersion: PROTOCOL_VERSION, payload }));
@@ -91,7 +103,7 @@ export default function vipiBridge(pi: ExtensionAPI) {
   pi.on("session_info_changed", async (_event, ctx) => send("runtime.session", { session: sessionSnapshot(ctx) }));
   pi.on("agent_start", async (_event, ctx) => { runtime.phase = "working"; runtime.unread = false; send("runtime.session", { session: sessionSnapshot(ctx) }); });
   pi.on("message_start", async (event, ctx) => {
-    runtime.activeMessageID = crypto.randomUUID();
+    runtime.activeMessageID = persistedMessageID(event.message, ctx) ?? crypto.randomUUID();
     const normalized = normalizeMessage(event.message, runtime.activeMessageID, true);
     if (normalized) send("runtime.event", { sessionID: ctx.sessionManager.getSessionId(), event: normalized });
   });
@@ -114,7 +126,10 @@ export default function vipiBridge(pi: ExtensionAPI) {
   });
   pi.on("message_end", async (event, ctx) => {
     runtime.activeMessageID ??= crypto.randomUUID();
-    const normalized = normalizeMessage(event.message, runtime.activeMessageID, false);
+    const persistedID = persistedMessageID(event.message, ctx);
+    const messageID = persistedID ?? runtime.activeMessageID;
+    const replacesMessageID = persistedID && persistedID !== runtime.activeMessageID ? runtime.activeMessageID : undefined;
+    const normalized = normalizeMessage(event.message, messageID, false, undefined, replacesMessageID);
     if (normalized) send("runtime.event", { sessionID: ctx.sessionManager.getSessionId(), event: normalized });
     runtime.activeMessageID = undefined;
   });

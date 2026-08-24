@@ -1,7 +1,7 @@
 export type ChatRole = "user" | "assistant" | "system";
 
 export type NormalizedSessionEvent =
-  | { kind: "message"; messageID: string; role: ChatRole; text: string; timestamp: string; streaming: boolean; entryID?: string }
+  | { kind: "message"; messageID: string; role: ChatRole; text: string; timestamp: string; streaming: boolean; entryID?: string; replacesMessageID?: string }
   | { kind: "tool"; toolCallID: string; name: string; state: "running" | "succeeded" | "failed"; summary: string; detail?: string; entryID?: string };
 
 type UnknownRecord = Record<string, unknown>;
@@ -34,7 +34,13 @@ function safeDetail(value: unknown): string | undefined {
   return raw.length > 4_096 ? `${raw.slice(0, 4_096)}…` : raw;
 }
 
-export function normalizeMessage(messageValue: unknown, messageID: string, streaming: boolean, entryID?: string): NormalizedSessionEvent | undefined {
+export function normalizeMessage(
+  messageValue: unknown,
+  messageID: string,
+  streaming: boolean,
+  entryID?: string,
+  replacesMessageID?: string,
+): NormalizedSessionEvent | undefined {
   const message = record(messageValue);
   if (!message) return undefined;
   const role = message.role;
@@ -47,6 +53,7 @@ export function normalizeMessage(messageValue: unknown, messageID: string, strea
     timestamp: timestamp(message.timestamp),
     streaming,
     ...(entryID ? { entryID } : {}),
+    ...(replacesMessageID ? { replacesMessageID } : {}),
   };
 }
 
