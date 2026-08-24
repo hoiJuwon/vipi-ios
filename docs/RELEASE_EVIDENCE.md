@@ -1,49 +1,34 @@
-# Release evidence
+# Personal-device readiness
 
 Validated on 2026-08-24 from clean `main` on Xcode 26 / iOS 26.5 SDK.
 
-## Passing unsigned archive
+Vipi is a private utility for the owner's devices. App Store Connect, TestFlight, public distribution, store review metadata, notarized distribution, and release marketing are intentionally out of scope.
 
-Reproducible command:
+## Passing validation
 
-```bash
-rm -rf /tmp/Vipi-final.xcarchive
-xcodebuild \
-  -project Vipi.xcodeproj \
-  -scheme Vipi \
-  -configuration Release \
-  -destination 'generic/platform=iOS' \
-  -archivePath /tmp/Vipi-final.xcarchive \
-  CODE_SIGNING_ALLOWED=NO \
-  archive
-```
+The canonical `npm test` command passes:
 
-Result: `** ARCHIVE SUCCEEDED **`
+- TypeScript checking
+- 9 host/real-extension integration tests
+- 10 Swift tests
+- 4 XCUITests with zero skips
 
-Retained artifact assertions used after the archive:
+A generic-device unsigned Release archive also succeeds and contains the arm64 app, app icon, privacy manifest, generated Info.plist, and Release metadata (`0.1.0` / `1`). The archive is retained only as a build-integrity check; uploading or distributing it is not required.
 
-```bash
-test -f /tmp/Vipi-final.xcarchive/Products/Applications/Vipi.app/PrivacyInfo.xcprivacy
-test -f /tmp/Vipi-final.xcarchive/Products/Applications/Vipi.app/AppIcon60x60@2x.png
-```
+## Current physical-device blocker
 
-Both pass. The archive includes the generated Info.plist, app icon, privacy manifest, arm64 device binary, and Release version/build metadata (`0.1.0` / `1`).
-
-## Exact signing blocker
-
-Signed archive command (the same command without `CODE_SIGNING_ALLOWED=NO`) fails only at provisioning with:
+No local Apple code-signing identity is installed:
 
 ```text
-Vipi.xcodeproj: error: Signing for "Vipi" requires a development team. Select a development team in the Signing & Capabilities editor. (in target 'Vipi' from project 'Vipi')
-** ARCHIVE FAILED **
+0 valid identities found
 ```
 
-No development-team identifier, App Store Connect account, certificate, or provisioning profile is present in the repository. None was fabricated or security-weakened.
+A device build therefore requires selecting an Apple ID or Personal Team in Xcode. This is required by iOS even for a private app installed only on the owner's phone; it is not a distribution requirement.
 
-## Minimal user actions
+## Minimal personal installation
 
-1. In Xcode **Settings → Accounts**, add the Apple ID that has access to the intended App Store Connect team.
-2. Open target **Vipi → Signing & Capabilities**, choose that team, and confirm `dev.vipi.ios` is an available App ID (change it to the registered private identifier if required).
-3. Run **Product → Archive**, then **Distribute App → App Store Connect → Upload** and complete the normal TestFlight compliance prompts.
+1. In Xcode **Settings → Accounts**, add the owner's Apple ID if it is not already present.
+2. In **Vipi → Signing & Capabilities**, select the owner's Personal Team. Change `dev.vipi.ios` only if Xcode reports that it is unavailable.
+3. Connect and trust the owner's iPhone, select it as the run destination, and press **Run**.
 
-No source change should be needed unless the registered bundle identifier differs.
+No App Store Connect app record, TestFlight group, distribution certificate, archive upload, review submission, compliance questionnaire, screenshots, or public privacy page is needed. A free Personal Team can install the app but may require periodic rebuilding; a paid developer membership provides longer-lived provisioning.

@@ -23,12 +23,6 @@ Updated 2026-08-24 after independent-audit remediation.
 - Generic-device unsigned Release archive succeeds with the app icon and privacy manifest present.
 - Secret scan is clean; `main` is clean and synchronized to the verified private origin.
 
-## External release dependency
+## Personal-device dependency
 
-The exact remaining signing evidence and three required user actions are retained in [`RELEASE_EVIDENCE.md`](RELEASE_EVIDENCE.md). A signed archive currently stops at:
-
-```text
-Signing for "Vipi" requires a development team. Select a development team in the Signing & Capabilities editor.
-```
-
-No signing security was weakened.
+Vipi is maintained for private use, so App Store Connect and TestFlight work are excluded. Installing on the owner's physical iPhone still requires an Apple ID or Personal Team because iOS requires code signing. The exact evidence and minimal three-step device-install procedure are retained in [`RELEASE_EVIDENCE.md`](RELEASE_EVIDENCE.md). No signing security was weakened.

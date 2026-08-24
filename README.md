@@ -2,7 +2,7 @@
 
 A native SwiftUI chat client for Pi sessions that stay alive in tmux on your Mac. Vipi deliberately does **not** reproduce Vim or terminal UI on the phone: tmux is the runtime, the iPhone is a polished chat surface.
 
-## TestFlight-ready architecture
+## Personal-device architecture
 
 The repository contains all three layers needed for the product:
 
@@ -42,7 +42,7 @@ The JSONL session remains owned by the existing Pi process. The host never opens
 
 ## Build the iOS app
 
-Requirements: Xcode 16+, XcodeGen, and an iOS 18+ simulator/device.
+Requirements: Xcode 16+, XcodeGen, and an iOS 18+ simulator/device. Vipi is maintained for private use on the owner's devices; App Store Connect, TestFlight, review metadata, public distribution, and release marketing are out of scope.
 
 ```bash
 brew install xcodegen
@@ -66,6 +66,8 @@ xcodebuild -project Vipi.xcodeproj \
 ```
 
 Production launches with no fabricated sessions. Open Settings to pair a host. Demo data is available only through the explicit **Use demo data** action (and the isolated UI-test launch seam).
+
+For installation on the owner's iPhone, select an Apple ID or Personal Team in **Vipi → Signing & Capabilities**, change `dev.vipi.ios` only if Xcode reports a bundle-ID conflict, select the connected iPhone, and press Run. A distribution certificate, App Store Connect record, archive upload, and TestFlight setup are not required. A free Personal Team may require periodic reinstalling; a paid developer account avoids that limitation.
 
 ## Run the host
 
