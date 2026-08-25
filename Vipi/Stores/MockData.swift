@@ -15,6 +15,9 @@ enum MockData {
                 .init(id: "t1", name: "read", summary: "Pi 세션 구조 분석", detail: "session registry와 JSONL tree", state: .succeeded),
                 .init(id: "t2", name: "bash", summary: "Swift toolchain 확인", detail: "Xcode 26.6 · Swift 6.3", state: .succeeded)
             ]),
+            .init(id: "m2-tools", role: .assistant, text: "", timestamp: .now.addingTimeInterval(-300), tools: [
+                .init(id: "t-old", name: "bash", summary: "중단된 이전 작업", detail: "npm run check", state: .succeeded)
+            ]),
             .init(id: "m3", role: .user, text: "앱의 초안을 실제로 만들어줘.", timestamp: .now.addingTimeInterval(-210)),
             .init(id: "m4", role: .assistant, text: "현재 앱 셸과 연결 프로토콜을 구성하고 있습니다. 세션 전환, 스트리밍 채팅, 도구 실행 카드, 연결 설정까지 한 번에 확인할 수 있게 만들겠습니다.", timestamp: .now.addingTimeInterval(-170), isStreaming: true, tools: [
                 .init(id: "t3", name: "write", summary: "Vipi SwiftUI 앱 생성", detail: "Session list, Chat, Activity, Settings", state: .running, changedFiles: 14)

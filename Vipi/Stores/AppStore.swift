@@ -15,6 +15,7 @@ final class AppStore {
     var showingSettings = false
     var activityItems: [ActivityItem] = []
     var draftsBySession: [String: String] = [:]
+    var queuedPromptsBySession: [String: [QueuedPrompt]] = [:]
     var commandError: String?
 
     private let broker: BrokerClient
@@ -74,6 +75,7 @@ final class AppStore {
     func messages(for id: String) -> [ChatMessage] { messagesBySession[id] ?? [] }
     func branches(for id: String) -> [BranchNode] { branchesBySession[id] ?? [] }
     func draft(for id: String) -> String { draftsBySession[id] ?? "" }
+    func queuedPrompts(for id: String) -> [QueuedPrompt] { queuedPromptsBySession[id] ?? [] }
     func setDraft(_ draft: String, for id: String) {
         if draft.isEmpty {
             draftsBySession.removeValue(forKey: id)
@@ -177,8 +179,12 @@ final class AppStore {
     func send(text: String, to sessionID: String, delivery: PromptDelivery) async {
         let message = ChatMessage(id: UUID().uuidString, role: .user, text: text, timestamp: .now)
         if connectionState == .demo {
-            messagesBySession[sessionID, default: []].append(message)
-            simulateReply(sessionID: sessionID)
+            if delivery == .followUp {
+                enqueuePrompt(text, for: sessionID)
+            } else {
+                messagesBySession[sessionID, default: []].append(message)
+                simulateReply(sessionID: sessionID)
+            }
             return
         }
         guard connectionState == .connected else {
@@ -187,7 +193,11 @@ final class AppStore {
         }
         do {
             _ = try await broker.send(type: "session.prompt", payload: PromptPayload(sessionID: sessionID, text: text, delivery: delivery))
-            messagesBySession[sessionID, default: []].append(message)
+            if delivery == .followUp {
+                enqueuePrompt(text, for: sessionID)
+            } else {
+                messagesBySession[sessionID, default: []].append(message)
+            }
         } catch {
             commandError = "Prompt could not be delivered: \(error.localizedDescription)"
         }
@@ -293,6 +303,7 @@ final class AppStore {
                 consolidateCurrentTurnTools(into: message.id, messages: &messages)
             }
             messagesBySession[sessionID] = messages
+            if message.role == .user { dequeuePrompt(matching: message.text, for: sessionID) }
             if let timestamp = event.timestamp {
                 lastMessageAtBySession[sessionID] = max(lastMessageAtBySession[sessionID] ?? .distantPast, timestamp)
                 if let index = sessions.firstIndex(where: { $0.id == sessionID }) {
@@ -326,6 +337,17 @@ final class AppStore {
             messagesBySession[sessionID] = messages
         }
         if let entryID = event.entryID { lastEntryBySession[sessionID] = entryID }
+    }
+
+    private func enqueuePrompt(_ text: String, for sessionID: String) {
+        guard !queuedPromptsBySession[sessionID, default: []].contains(where: { $0.text == text }) else { return }
+        queuedPromptsBySession[sessionID, default: []].append(QueuedPrompt(id: UUID().uuidString, text: text))
+    }
+
+    private func dequeuePrompt(matching text: String, for sessionID: String) {
+        guard let index = queuedPromptsBySession[sessionID]?.firstIndex(where: { $0.text == text }) else { return }
+        queuedPromptsBySession[sessionID]?.remove(at: index)
+        if queuedPromptsBySession[sessionID]?.isEmpty == true { queuedPromptsBySession.removeValue(forKey: sessionID) }
     }
 
     private func consolidateCurrentTurnTools(into messageID: String, messages: inout [ChatMessage]) {

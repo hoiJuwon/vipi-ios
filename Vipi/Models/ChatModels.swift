@@ -33,3 +33,8 @@ struct BranchNode: Identifiable, Codable, Hashable, Sendable {
 enum PromptDelivery: String, Codable, Sendable {
     case prompt, steer, followUp
 }
+
+struct QueuedPrompt: Identifiable, Hashable, Sendable {
+    let id: String
+    let text: String
+}

@@ -24,11 +24,17 @@ final class VipiUITests: XCTestCase {
 
         let composer = app.textFields["chat.composer"]
         XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["chat.stop"].isEnabled)
         composer.tap()
         composer.typeText("UI test prompt")
         let send = app.buttons["chat.send"]
+        XCTAssertTrue(send.waitForExistence(timeout: 3))
         XCTAssertTrue(send.isEnabled)
+        XCTAssertFalse(app.buttons["chat.stop"].exists)
         send.tap()
+        let queue = app.descendants(matching: .any)["chat.queue"]
+        XCTAssertTrue(queue.waitForExistence(timeout: 3))
+        XCTAssertEqual(queue.value as? String, "1")
     }
 
     func testLiveHostPairingHistoryStreamingToolsAndAbort() throws {
@@ -85,9 +91,10 @@ final class VipiUITests: XCTestCase {
         let composer = app.textFields["chat.composer"]
         XCTAssertEqual(composer.label, "Message Pi")
         XCTAssertTrue(composer.isHittable)
-        let send = app.buttons["chat.send"]
-        XCTAssertEqual(send.label, "Send message")
-        XCTAssertFalse(send.isEnabled)
+        let stop = app.buttons["chat.stop"]
+        XCTAssertEqual(stop.label, "Stop current run")
+        XCTAssertTrue(stop.isEnabled)
+        XCTAssertFalse(app.buttons["chat.send"].exists)
 
         let previousMessage = app.buttons["chat.previousAssistantMessage"]
         let nextMessage = app.buttons["chat.nextAssistantMessage"]
@@ -96,6 +103,10 @@ final class VipiUITests: XCTestCase {
         XCTAssertTrue(previousText.waitForExistence(timeout: 5))
         let visibleTranscriptTop = max(transcript.frame.minY, app.navigationBars.firstMatch.frame.maxY)
         XCTAssertLessThan(abs(previousText.frame.minY - visibleTranscriptTop), 35)
+        let interruptedWorkHistory = app.buttons.matching(
+            NSPredicate(format: "label == %@ AND value CONTAINS %@", "작업 기록", "1개")
+        ).firstMatch
+        XCTAssertTrue(interruptedWorkHistory.waitForExistence(timeout: 3))
         nextMessage.tap()
         let nextText = app.staticTexts["assistant.message.m4"]
         XCTAssertTrue(nextText.waitForExistence(timeout: 5))

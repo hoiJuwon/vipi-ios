@@ -28,6 +28,21 @@ final class SessionModelTests: XCTestCase {
         XCTAssertEqual(store.draft(for: "session-b"), "second draft")
     }
 
+    @MainActor func testWorkingPromptIsQueuedUntilItsUserMessageStarts() async throws {
+        let store = AppStore(startsInDemoMode: true)
+        let originalCount = store.messages(for: "mobile").count
+        await store.send(text: "queued follow-up", to: "mobile", delivery: .followUp)
+
+        XCTAssertEqual(store.queuedPrompts(for: "mobile").map(\.text), ["queued follow-up"])
+        XCTAssertEqual(store.messages(for: "mobile").count, originalCount)
+
+        let json = #"{"type":"session.event","payload":{"sessionID":"mobile","event":{"kind":"message","messageID":"queued-user","role":"user","text":"queued follow-up","timestamp":"2026-08-24T00:00:00Z","streaming":false}}}"#
+        let envelope = try JSONDecoder().decode(ServerEnvelope.self, from: Data(json.utf8))
+        await store.handle(envelope)
+        XCTAssertTrue(store.queuedPrompts(for: "mobile").isEmpty)
+        XCTAssertEqual(store.messages(for: "mobile").last?.text, "queued follow-up")
+    }
+
     @MainActor func testNormalizedStreamingAndToolEventsAreReducedIncrementally() async throws {
         let store = AppStore()
         store.messagesBySession["wire"] = []

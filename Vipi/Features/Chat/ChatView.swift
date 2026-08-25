@@ -16,11 +16,17 @@ struct ChatView: View {
             transcript
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            ComposerView(draft: draftBinding, phase: session?.phase ?? .offline) { mode in
+            ComposerView(
+                draft: draftBinding,
+                phase: session?.phase ?? .offline,
+                queuedPrompts: store.queuedPrompts(for: sessionID)
+            ) { mode in
                 let text = store.draft(for: sessionID).trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !text.isEmpty else { return }
                 store.setDraft("", for: sessionID)
                 Task { await store.send(text: text, to: sessionID, delivery: mode) }
+            } onStop: {
+                Task { await store.abort(sessionID: sessionID) }
             }
         }
         .navigationTitle(session?.name.components(separatedBy: " / ").last ?? "Session")
@@ -101,7 +107,11 @@ struct ChatView: View {
                                     }
                             }
                             ForEach(store.messages(for: sessionID)) { message in
-                                MessageView(message: message).id(message.id)
+                                MessageView(
+                                    message: message,
+                                    isCurrentWork: message.id == currentWorkMessageID
+                                )
+                                .id(message.id)
                             }
                             Color.clear.frame(height: 4).id("bottom")
                             Color.clear
@@ -140,6 +150,11 @@ struct ChatView: View {
                 }
             }
         }
+    }
+
+    private var currentWorkMessageID: String? {
+        guard session?.phase == .working else { return nil }
+        return store.messages(for: sessionID).last(where: { $0.role == .assistant })?.id
     }
 
     private var assistantMessageIDs: [String] {
@@ -255,6 +270,7 @@ private struct ChatLoadingView: View {
 
 private struct MessageView: View {
     let message: ChatMessage
+    let isCurrentWork: Bool
 
     var body: some View {
         if message.role == .user {
@@ -265,7 +281,7 @@ private struct MessageView: View {
         } else {
             VStack(alignment: .leading, spacing: 12) {
                 if !message.tools.isEmpty {
-                    if message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    if isCurrentWork && message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         WorkLog(tools: message.tools)
                     } else {
                         WorkHistoryDisclosure(tools: message.tools)
