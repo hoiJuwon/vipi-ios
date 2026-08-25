@@ -113,10 +113,13 @@ struct ChatView: View {
                     .onScrollPhaseChange { _, phase in
                         if phase == .interacting { userHasScrolledTranscript = true }
                     }
-                    .onChange(of: store.messages(for: sessionID).count) {
+                    .onChange(of: latestTranscriptRevision) {
                         guard !store.isHistoryLoading(for: sessionID) else { return }
                         focusedAssistantID = assistantMessageIDs.last
-                        withAnimation { proxy.scrollTo("bottom", anchor: .bottom) }
+                        Task { @MainActor in
+                            await Task.yield()
+                            proxy.scrollTo("bottom", anchor: .bottom)
+                        }
                     }
 
                     if !assistantMessageIDs.isEmpty {
@@ -138,6 +141,12 @@ struct ChatView: View {
 
     private var assistantMessageIDs: [String] {
         store.messages(for: sessionID).filter { $0.role == .assistant }.map(\.id)
+    }
+
+    private var latestTranscriptRevision: String {
+        guard let message = store.messages(for: sessionID).last else { return "empty" }
+        let tools = message.tools.map { "\($0.id):\($0.state.rawValue):\($0.summary):\($0.detail ?? "")" }.joined(separator: "|")
+        return "\(message.id):\(message.text):\(message.isStreaming):\(tools)"
     }
 
     private func focusPreviousAssistant(using proxy: ScrollViewProxy) {
@@ -243,16 +252,17 @@ private struct MessageView: View {
                 .vipiGlass(tint: VipiTheme.accent, in: RoundedRectangle(cornerRadius: 18, style: .continuous)) }
         } else {
             VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 8) {
-                    Image(systemName: "circle.hexagongrid.fill").foregroundStyle(VipiTheme.accent)
-                    Text("Pi").font(.subheadline.bold())
-                    if message.isStreaming { ProgressView().controlSize(.small).tint(VipiTheme.accent) }
-                    Spacer()
-                    Text(message.timestamp, style: .time).font(.caption2).foregroundStyle(VipiTheme.secondary)
+                if message.isStreaming && message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text("Thinking...")
+                        .font(.body.italic())
+                        .foregroundStyle(VipiTheme.secondary)
+                        .accessibilityLabel("Thinking")
+                } else if !message.text.isEmpty {
+                    Text(.init(message.text))
+                        .font(.body)
+                        .foregroundStyle(VipiTheme.primary)
+                        .textSelection(.enabled)
                 }
-                Text(.init(message.text))
-                    .font(.body).foregroundStyle(VipiTheme.primary)
-                    .textSelection(.enabled)
                 ForEach(message.tools) { tool in ToolCard(tool: tool) }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
