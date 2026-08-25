@@ -5,10 +5,10 @@ Updated 2026-08-24 after independent-audit remediation.
 ## Implemented
 
 - The active tmux Pi process remains the sole JSONL writer.
-- The real extension normalizes streaming messages, assistant tool calls, `toolResult` history entries, tool execution updates, history cursors, and runtime state. Settled messages replace transient stream IDs with persisted entry IDs.
-- The iOS reducer reconciles transient, persisted, repeated-history, and replay-reset events without duplicating messages or tools.
+- The extension emits final chat messages plus payload-free progress categories. Tool arguments, updates, results, command output, `toolResult` history, compaction summaries, and intermediate assistant commentary are excluded before mobile transport.
+- The iOS reducer reconciles persisted, repeated-history, progress, and replay-reset events without duplicating messages.
 - The broker provides bounded sequence replay, restart-cursor reset, correlated command responses, prompt/steer/follow-up/abort/compact routing, role-aware rate limits (high-throughput runtime vs constrained mobile/unauthenticated clients), loopback-only defaults, token rotation, and launchd setup.
-- iOS reduces live/history/tool events, reconnects incrementally, stores pairing tokens in this-device-only Keychain, updates reconnect credentials on rotation, and surfaces transport/runtime command failures.
+- iOS reduces final-message/history/progress events, reconnects incrementally, stores pairing tokens in this-device-only Keychain, updates reconnect credentials on rotation, and surfaces transport/runtime command failures.
 - Release builds accept only HTTPS `.ts.net` endpoints before any bearer token is transmitted. The HTTP localhost fixture seam is compiled only in Debug UI-test builds.
 - Production launches empty/disconnected and never fabricates replies; mock sessions/replies require the explicit demo action or isolated UI-test launch.
 - Placeholder controls were removed. Production controls have actions and stable accessibility identifiers/semantics.

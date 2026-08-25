@@ -104,15 +104,16 @@ test("creates pairing payloads only for public HTTPS Tailscale hosts", () => {
   assert.throws(() => createPairingPayload("https://public.example.com", "token"), /.ts.net/);
 });
 
-test("normalizes message, tool, and incremental branch history", () => {
+test("normalizes final messages and redacts tool payloads from mobile DTOs", () => {
   const message = { role: "assistant", content: [{ type: "text", text: "hello" }], timestamp: 1_700_000_000_000 };
   assert.deepEqual(normalizeMessage(message, "m1", true), {
     kind: "message", messageID: "m1", role: "assistant", text: "hello",
     timestamp: "2023-11-14T22:13:20.000Z", streaming: true,
   });
   const tool = normalizeToolEvent({ type: "tool_execution_end", toolCallId: "t1", toolName: "read", result: "ok", isError: false });
-  assert.equal(tool?.kind, "tool");
-  assert.equal(tool?.kind === "tool" ? tool.state : undefined, "succeeded");
+  assert.equal(tool?.kind, "progress");
+  assert.equal(tool?.kind === "progress" ? tool.activity : undefined, "thinking");
+  assert.equal("detail" in (tool ?? {}), false);
   const history = normalizeHistory([
     { id: "e1", parentId: null, timestamp: "2026-08-24T00:00:00Z", type: "message", message: { role: "user", content: "first", timestamp: 1 } },
     { id: "e2", parentId: "e1", timestamp: "2026-08-24T00:00:01Z", type: "message", message: {
@@ -123,13 +124,16 @@ test("normalizes message, tool, and incremental branch history", () => {
     { id: "e3", parentId: "e2", timestamp: "2026-08-24T00:00:02Z", type: "message", message: {
       role: "toolResult", toolCallId: "call-1", toolName: "read", content: [{ type: "text", text: "file body" }], isError: false, timestamp: 3,
     } },
+    { id: "e4", parentId: "e3", timestamp: "2026-08-24T00:00:03Z", type: "message", message: {
+      role: "assistant", content: [{ type: "text", text: "final answer" }], timestamp: 4,
+    } },
   ], { afterEntryID: "e1" });
-  assert.equal(history.events.length, 3);
-  assert.deepEqual(history.events.map((event) => event.kind), ["message", "tool", "tool"]);
-  assert.equal(history.events[1]?.entryID, "e2");
-  assert.equal(history.events[2]?.entryID, "e3");
-  assert.equal(history.events[2]?.kind === "tool" ? history.events[2].state : undefined, "succeeded");
-  assert.equal(history.lastEntryID, "e3");
+  assert.equal(history.events.length, 1);
+  assert.equal(history.events[0]?.kind, "message");
+  assert.equal(history.events[0]?.kind === "message" ? history.events[0].text : undefined, "final answer");
+  assert.equal(JSON.stringify(history).includes("file body"), false);
+  assert.equal(JSON.stringify(history).includes("README.md"), false);
+  assert.equal(history.lastEntryID, "e4");
   assert.equal(history.oldestEntryID, "e2");
   assert.equal(history.hasMore, false);
 });
@@ -147,13 +151,14 @@ test("bounds large real histories below the WebSocket payload limit", () => {
   const history = normalizeHistory(entries);
   assert.ok(Buffer.byteLength(JSON.stringify(history), "utf8") < 512 * 1024);
   assert.equal(history.lastEntryID, "large-79");
-  assert.equal(history.events.at(-1)?.entryID, "large-79");
+  const latestEvent = history.events.at(-1);
+  assert.equal(latestEvent?.kind === "message" ? latestEvent.entryID : undefined, "large-79");
   assert.ok(history.events.length < entries.length);
   assert.equal(history.hasMore, true);
 
   const older = normalizeHistory(entries, { beforeEntryID: history.oldestEntryID, limit: 20 });
   assert.ok(older.events.length > 0);
-  assert.ok(older.events.every((event) => event.entryID !== history.oldestEntryID));
+  assert.ok(older.events.every((event) => event.kind !== "message" || event.entryID !== history.oldestEntryID));
 });
 
 test("reads the active JSONL branch without becoming a writer", () => {
@@ -183,22 +188,22 @@ test("replays missed normalized runtime events from a sequence cursor", async ()
   const snapshot = await receive(mobile);
   assert.equal(snapshot.type, "sessions.snapshot");
 
-  const eventOne = { sessionID: "session-1", event: { kind: "message", messageID: "m1", role: "assistant", text: "A", timestamp: new Date().toISOString(), streaming: true } };
+  const eventOne = { sessionID: "session-1", event: { kind: "progress", activity: "thinking", timestamp: new Date().toISOString() } };
   send(runtime, "runtime.event", eventOne);
   const first = await receive(mobile);
   assert.equal(first.type, "session.event");
-  assert.equal(first.payload.event.text, "A");
+  assert.equal(first.payload.event.activity, "thinking");
   const cursor = first.seq as number;
   mobile.close();
   await new Promise((resolve) => mobile.once("close", resolve));
 
-  send(runtime, "runtime.event", { ...eventOne, event: { ...eventOne.event, text: "AB" } });
+  send(runtime, "runtime.event", { ...eventOne, event: { ...eventOne.event, activity: "editing" } });
   const resumed = await connect();
   send(resumed, "auth.authenticate", { token, lastSeq: cursor }, "auth-2");
   assert.equal((await receive(resumed)).type, "auth.ok");
   const replayed = await receive(resumed);
   assert.equal(replayed.type, "session.event");
-  assert.equal(replayed.payload.event.text, "AB");
+  assert.equal(replayed.payload.event.activity, "editing");
   assert.ok(replayed.seq > cursor);
   resumed.close();
   runtime.close();
@@ -252,7 +257,9 @@ test("routes prompt modes, abort, history, responses, and tool events", async ()
   } });
   const tool = await receive(mobile);
   assert.equal(tool.type, "session.event");
-  assert.equal(tool.payload.event.kind, "tool");
+  assert.equal(tool.payload.event.kind, "progress");
+  assert.equal(tool.payload.event.activity, "reading");
+  assert.equal(tool.payload.event.detail, undefined);
   mobile.close();
   runtime.close();
 });
@@ -294,7 +301,7 @@ test("routes mobile commands only to the tmux pane currently in the registry", a
   await rm(registryPath, { force: true });
 });
 
-test("allows sustained runtime streaming above the mobile command rate", async () => {
+test("allows sustained lightweight progress events above the mobile command rate", async () => {
   const runtime = await connect();
   send(runtime, "runtime.register", { token, session: {
     id: "sustained", name: "Sustained", cwd: "/tmp/sustained", phase: "working", unread: false,
@@ -307,13 +314,13 @@ test("allows sustained runtime streaming above the mobile command rate", async (
   await receiveType(mobile, "sessions.snapshot");
   for (let index = 0; index < 250; index++) {
     send(runtime, "runtime.event", { sessionID: "sustained", event: {
-      kind: "message", messageID: "sustained-message", role: "assistant", text: `chunk-${index}`,
-      timestamp: new Date().toISOString(), streaming: true,
+      kind: "progress", activity: index % 2 === 0 ? "thinking" : "editing",
+      timestamp: new Date().toISOString(),
     } });
   }
   let last: Record<string, any> | undefined;
   for (let index = 0; index < 250; index++) last = await receiveType(mobile, "session.event");
-  assert.equal(last?.payload.event.text, "chunk-249");
+  assert.equal(last?.payload.event.activity, "editing");
   assert.equal(runtime.readyState, WebSocket.OPEN);
   mobile.close();
   runtime.close();
@@ -371,7 +378,8 @@ test("runs the real Pi extension through broker registration, history, controls,
   send(mobile, "session.history", { sessionID: "real-extension" }, "real-history");
   const history = await receiveType(mobile, "session.response");
   assert.equal(history.payload.result.events[0].text, "real history");
-  assert.equal(history.payload.result.events[1].kind, "tool");
+  assert.equal(history.payload.result.events.length, 1);
+  assert.equal(JSON.stringify(history.payload.result).includes("result"), false);
 
   for (const [id, delivery] of [["prompt", "prompt"], ["steer", "steer"], ["follow", "followUp"]] as const) {
     send(mobile, "session.prompt", { sessionID: "real-extension", text: id, delivery }, `real-${id}`);
@@ -385,19 +393,24 @@ test("runs the real Pi extension through broker registration, history, controls,
   assert.equal(aborted, true);
   assert.equal(compacted, true);
 
+  await handlers.get("agent_start")?.({ type: "agent_start" }, context);
+  const thinking = await receiveType(mobile, "session.event");
+  assert.equal(thinking.payload.event.activity, "thinking");
+  await handlers.get("tool_execution_start")?.({ type: "tool_execution_start", toolCallId: "live-tool", toolName: "edit", args: { path: "/secret", content: "large private content" } }, context);
+  const editing = await receiveType(mobile, "session.event");
+  assert.equal(editing.payload.event.activity, "editing");
+  assert.equal(JSON.stringify(editing).includes("large private content"), false);
+  await handlers.get("tool_execution_end")?.({ type: "tool_execution_end", toolCallId: "live-tool", toolName: "edit", result: "private result", isError: false }, context);
+  const thinkingAgain = await receiveType(mobile, "session.event");
+  assert.equal(thinkingAgain.payload.event.activity, "thinking");
+
   const assistant = { role: "assistant", content: [{ type: "text", text: "live real extension" }], timestamp: Date.now() };
-  await handlers.get("message_update")?.({ type: "message_update", message: assistant, assistantMessageEvent: { type: "text_delta", delta: "live" } }, context);
-  const live = await receiveType(mobile, "session.event");
-  assert.equal(live.payload.event.text, "live real extension");
   branch.push({ id: "real-live-entry", parentId: "real-2", timestamp: new Date().toISOString(), type: "message", message: assistant });
   await handlers.get("message_end")?.({ type: "message_end", message: assistant }, context);
+  await handlers.get("agent_settled")?.({ type: "agent_settled" }, context);
   const settled = await receiveType(mobile, "session.event");
   assert.equal(settled.payload.event.messageID, "real-live-entry");
-  assert.equal(settled.payload.event.replacesMessageID, live.payload.event.messageID);
-  await handlers.get("tool_execution_end")?.({ type: "tool_execution_end", toolCallId: "live-tool", toolName: "read", result: "ok", isError: false }, context);
-  const tool = await receiveType(mobile, "session.event");
-  assert.equal(tool.payload.event.kind, "tool");
-  assert.equal(tool.payload.event.state, "succeeded");
+  assert.equal(settled.payload.event.text, "live real extension");
   await handlers.get("session_shutdown")?.({ type: "session_shutdown", reason: "quit" }, context);
   mobile.close();
 });

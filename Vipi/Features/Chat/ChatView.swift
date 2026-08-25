@@ -7,8 +7,19 @@ struct ChatView: View {
     @State private var showBranches = false
     @State private var focusedAssistantID: String?
     @State private var userHasScrolledTranscript = false
+    @State private var isFollowingLatest = true
+    @State private var isNavigatingHistory = false
 
     private var session: RemoteSession? { store.session(id: sessionID) }
+    private var isWorking: Bool { session?.phase == .working }
+
+    private var displayMessages: [ChatMessage] {
+        let messages = store.messages(for: sessionID).filter { $0.role != .system }
+        guard isWorking, let latestUserIndex = messages.lastIndex(where: { $0.role == .user }) else { return messages }
+        return messages.enumerated().compactMap { index, message in
+            index > latestUserIndex && message.role == .assistant ? nil : message
+        }
+    }
 
     var body: some View {
         ZStack {
@@ -94,29 +105,33 @@ struct ChatView: View {
             ScrollViewReader { proxy in
                 ZStack(alignment: .bottomTrailing) {
                     ScrollView {
-                        LazyVStack(spacing: 20) {
+                        VStack(spacing: 20) {
                             if store.canLoadOlderHistory(for: sessionID) {
                                 OlderHistoryLoader(isLoading: store.isHistoryLoading(for: sessionID))
                                     .onAppear {
-                                        guard userHasScrolledTranscript else { return }
-                                        let anchor = store.messages(for: sessionID).first?.id
+                                        guard userHasScrolledTranscript, !isNavigatingHistory else { return }
+                                        let anchor = displayMessages.first?.id
                                         Task {
                                             await store.loadOlderHistory(for: sessionID)
-                                            if let anchor { proxy.scrollTo(anchor, anchor: .top) }
+                                            if let anchor { proxy.scrollTo(rowID(for: anchor), anchor: .top) }
                                         }
                                     }
                             }
-                            ForEach(store.messages(for: sessionID)) { message in
-                                MessageView(
-                                    message: message,
-                                    isCurrentWork: message.id == currentWorkMessageID
-                                )
-                                .id(message.id)
+                            ForEach(displayMessages) { message in
+                                ChatMessageRow(message: message)
+                                    .id(rowID(for: message.id))
                             }
-                            Color.clear.frame(height: 4).id("bottom")
+                            if isWorking {
+                                WorkingStatusView(
+                                    activity: store.progressActivity(for: sessionID),
+                                    startedAt: displayMessages.last(where: { $0.role == .user })?.timestamp ?? .now
+                                )
+                                .id("working-status")
+                            }
                             Color.clear
                                 .frame(height: UIScreen.main.bounds.height * 0.62)
                                 .accessibilityHidden(true)
+                                .allowsHitTesting(false)
                         }
                         .padding(.horizontal, 16)
                         .padding(.vertical, 18)
@@ -124,20 +139,20 @@ struct ChatView: View {
                     .scrollDismissesKeyboard(.interactively)
                     .accessibilityIdentifier("chat.transcript")
                     .onScrollPhaseChange { _, phase in
-                        if phase == .interacting { userHasScrolledTranscript = true }
-                    }
-                    .onChange(of: latestTranscriptRevision) {
-                        guard !store.isHistoryLoading(for: sessionID) else { return }
-                        focusedAssistantID = assistantMessageIDs.last
-                        Task { @MainActor in
-                            await Task.yield()
-                            proxy.scrollTo("bottom", anchor: .bottom)
+                        if phase == .interacting {
+                            userHasScrolledTranscript = true
+                            isFollowingLatest = false
                         }
                     }
+                    .onChange(of: latestTranscriptRevision) {
+                        guard !store.isHistoryLoading(for: sessionID), isFollowingLatest else { return }
+                        focusedAssistantID = assistantMessageIDs.last
+                        scrollToLatestContent(using: proxy)
+                    }
 
-                    if !assistantMessageIDs.isEmpty {
+                    if !assistantMessageIDs.isEmpty || store.canLoadOlderHistory(for: sessionID) {
                         MessageNavigationControls(
-                            goUp: { focusPreviousAssistant(using: proxy) },
+                            goUp: { Task { await focusPreviousAssistant(using: proxy) } },
                             goDown: { focusNextAssistant(using: proxy) }
                         )
                         .padding(.trailing, 12)
@@ -146,49 +161,75 @@ struct ChatView: View {
                 }
                 .onAppear {
                     focusedAssistantID = assistantMessageIDs.last
-                    proxy.scrollTo("bottom", anchor: .bottom)
+                    scrollToLatestContent(using: proxy)
                 }
             }
         }
     }
 
-    private var currentWorkMessageID: String? {
-        guard session?.phase == .working else { return nil }
-        return store.messages(for: sessionID).last(where: { $0.role == .assistant })?.id
-    }
-
     private var assistantMessageIDs: [String] {
-        store.messages(for: sessionID)
+        displayMessages
             .filter { $0.role == .assistant && !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
             .map(\.id)
     }
 
-    private func assistantTextAnchor(_ messageID: String) -> String {
-        "assistant-text-\(messageID)"
-    }
+    private func rowID(for messageID: String) -> String { "message-\(messageID)" }
 
     private var latestTranscriptRevision: String {
-        guard let message = store.messages(for: sessionID).last else { return "empty" }
-        let tools = message.tools.map { "\($0.id):\($0.state.rawValue):\($0.summary):\($0.detail ?? "")" }.joined(separator: "|")
-        return "\(message.id):\(message.text):\(message.isStreaming):\(tools)"
+        let last = displayMessages.last.map { "\($0.id):\($0.text):\($0.isStreaming)" } ?? "empty"
+        return "\(last):\(isWorking):\(store.progressActivity(for: sessionID).rawValue)"
     }
 
-    private func focusPreviousAssistant(using proxy: ScrollViewProxy) {
-        let ids = assistantMessageIDs
-        guard !ids.isEmpty else { return }
-        let currentIndex = focusedAssistantID.flatMap { ids.firstIndex(of: $0) } ?? ids.count - 1
-        let targetIndex = max(0, currentIndex - 1)
-        focusedAssistantID = ids[targetIndex]
-        withAnimation(.snappy) { proxy.scrollTo(assistantTextAnchor(ids[targetIndex]), anchor: .top) }
+    private func focusPreviousAssistant(using proxy: ScrollViewProxy) async {
+        var ids = assistantMessageIDs
+        isFollowingLatest = false
+        userHasScrolledTranscript = true
+        isNavigatingHistory = true
+        let currentID = focusedAssistantID.flatMap { ids.contains($0) ? $0 : nil }
+        var currentIndex = currentID.flatMap { ids.firstIndex(of: $0) } ?? ids.count
+
+        for _ in 0..<8 {
+            guard (ids.isEmpty || currentIndex == 0), store.canLoadOlderHistory(for: sessionID) else { break }
+            await store.loadOlderHistory(for: sessionID)
+            for _ in 0..<120 where store.isHistoryLoading(for: sessionID) {
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+            ids = assistantMessageIDs
+            currentIndex = currentID.flatMap { ids.firstIndex(of: $0) } ?? ids.count
+        }
+
+        guard currentIndex > 0, !ids.isEmpty else {
+            isNavigatingHistory = false
+            return
+        }
+        let targetID = ids[currentIndex - 1]
+        focusedAssistantID = targetID
+        withAnimation(.snappy) { proxy.scrollTo(rowID(for: targetID), anchor: .top) }
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(500))
+            isNavigatingHistory = false
+        }
     }
 
     private func focusNextAssistant(using proxy: ScrollViewProxy) {
         let ids = assistantMessageIDs
         guard !ids.isEmpty else { return }
+        userHasScrolledTranscript = true
         let currentIndex = focusedAssistantID.flatMap { ids.firstIndex(of: $0) } ?? 0
         let targetIndex = min(ids.count - 1, currentIndex + 1)
         focusedAssistantID = ids[targetIndex]
-        withAnimation(.snappy) { proxy.scrollTo(assistantTextAnchor(ids[targetIndex]), anchor: .top) }
+        isFollowingLatest = targetIndex == ids.count - 1
+        withAnimation(.snappy) { proxy.scrollTo(rowID(for: ids[targetIndex]), anchor: .top) }
+    }
+
+    private func scrollToLatestContent(using proxy: ScrollViewProxy) {
+        let target = isWorking ? "working-status" : displayMessages.last.map { rowID(for: $0.id) }
+        guard let target else { return }
+        Task { @MainActor in
+            await Task.yield()
+            try? await Task.sleep(for: .milliseconds(120))
+            proxy.scrollTo(target, anchor: .bottom)
+        }
     }
 }
 
@@ -249,9 +290,7 @@ private struct ChatLoadingView: View {
         .padding(.top, 22)
         .opacity(pulse ? 0.42 : 0.78)
         .onAppear {
-            withAnimation(.easeInOut(duration: 0.85).repeatForever(autoreverses: true)) {
-                pulse = true
-            }
+            withAnimation(.easeInOut(duration: 0.85).repeatForever(autoreverses: true)) { pulse = true }
         }
         .accessibilityLabel("대화를 불러오는 중")
     }
@@ -268,85 +307,83 @@ private struct ChatLoadingView: View {
     }
 }
 
-private struct MessageView: View {
+private struct ChatMessageRow: View {
     let message: ChatMessage
-    let isCurrentWork: Bool
 
     var body: some View {
         if message.role == .user {
-            HStack { Spacer(minLength: 44); Text(message.text)
-                .font(.body).foregroundStyle(.white)
-                .padding(.horizontal, 15).padding(.vertical, 11)
-                .vipiGlass(tint: VipiTheme.accent, in: RoundedRectangle(cornerRadius: 18, style: .continuous)) }
+            HStack {
+                Spacer(minLength: 44)
+                Text(message.text)
+                    .font(.body)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 15)
+                    .padding(.vertical, 11)
+                    .vipiGlass(tint: VipiTheme.accent, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            }
         } else {
-            VStack(alignment: .leading, spacing: 12) {
-                if !message.tools.isEmpty {
-                    if isCurrentWork && message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        WorkLog(tools: message.tools)
-                    } else {
-                        WorkHistoryDisclosure(tools: message.tools)
-                    }
-                }
+            Text(.init(message.text))
+                .font(.body)
+                .foregroundStyle(VipiTheme.primary)
+                .textSelection(.enabled)
+                .accessibilityIdentifier("assistant.message.\(message.id)")
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
 
-                if !message.text.isEmpty {
-                    Text(.init(message.text))
-                        .font(.body)
+private struct WorkingStatusView: View {
+    let activity: ProgressActivity
+    let startedAt: Date
+    @State private var pulse = false
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .stroke(VipiTheme.stroke, lineWidth: 1)
+                        .frame(width: 24, height: 24)
+                    Circle()
+                        .fill(VipiTheme.accent)
+                        .frame(width: 7, height: 7)
+                        .scaleEffect(pulse ? 1.0 : 0.55)
+                        .opacity(pulse ? 1 : 0.45)
+                        .shadow(color: VipiTheme.accent.opacity(0.55), radius: 5)
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("\(activity.title)…")
+                        .font(.subheadline.weight(.medium))
                         .foregroundStyle(VipiTheme.primary)
-                        .textSelection(.enabled)
-                        .accessibilityIdentifier("assistant.message.\(message.id)")
-                        .id("assistant-text-\(message.id)")
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-}
-
-private struct WorkLog: View {
-    let tools: [ToolActivity]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ForEach(tools) { tool in
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(tool.name)
-                        .font(.subheadline.italic())
-                        .underline()
-                        .foregroundStyle(tool.state == .failed ? VipiTheme.danger : VipiTheme.secondary)
-                    Text(tool.detail ?? tool.summary)
-                        .font(.caption.monospaced())
+                    Text(elapsedText(at: context.date))
+                        .font(.caption.monospacedDigit())
                         .foregroundStyle(VipiTheme.secondary)
-                        .textSelection(.enabled)
                 }
+                Spacer()
+                Text("●")
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(VipiTheme.accent)
             }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(VipiTheme.stroke, lineWidth: 0.75)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("chat.progress")
+            .accessibilityLabel(activity.title)
+            .accessibilityValue(elapsedText(at: context.date))
+        }
+        .onAppear {
+            withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) { pulse = true }
         }
     }
-}
 
-private struct WorkHistoryDisclosure: View {
-    let tools: [ToolActivity]
-    @State private var expanded = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            Button { withAnimation(.snappy) { expanded.toggle() } } label: {
-                HStack(spacing: 5) {
-                    Text("작업 기록")
-                        .underline()
-                    Image(systemName: expanded ? "chevron.up" : "chevron.down")
-                        .font(.caption2)
-                }
-                .font(.subheadline)
-                .foregroundStyle(VipiTheme.secondary)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("작업 기록")
-            .accessibilityValue("\(tools.count)개 도구")
-
-            if expanded {
-                WorkLog(tools: tools)
-                    .padding(.leading, 10)
-            }
-        }
+    private func elapsedText(at date: Date) -> String {
+        let seconds = max(0, Int(date.timeIntervalSince(startedAt)))
+        if seconds < 60 { return "\(seconds)초 작업 중" }
+        return "\(seconds / 60)분 \(seconds % 60)초 작업 중"
     }
 }

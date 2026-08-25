@@ -25,21 +25,12 @@ const context = {
 async function produceSettledTurn(): Promise<void> {
   phase = "working";
   await handlers.get("agent_start")?.({ type: "agent_start" }, context);
-  const message: any = { role: "assistant", content: [{ type: "text", text: "Streaming" }], timestamp: Date.now() };
-  await handlers.get("message_start")?.({ type: "message_start", message }, context);
-  await handlers.get("message_update")?.({ type: "message_update", message, assistantMessageEvent: { type: "text_delta", delta: "Streaming" } }, context);
+  await handlers.get("tool_execution_start")?.({ type: "tool_execution_start", toolCallId: "tool-e2e", toolName: "read", args: { path: "README.md" } }, context);
   await handlers.get("tool_execution_end")?.({ type: "tool_execution_end", toolCallId: "tool-e2e", toolName: "read", result: "ok", isError: false }, context);
-  message.content = [
-    { type: "text", text: "Streaming complete" },
-    { type: "toolCall", id: "tool-e2e", name: "read", arguments: { path: "README.md" } },
-  ];
+  const message: any = { role: "assistant", content: [{ type: "text", text: "Streaming complete" }], timestamp: Date.now() };
   const messageEntryID = `entry-${nextEntry++}`;
   branch.push({ id: messageEntryID, parentId: branch.at(-1)?.id ?? null, timestamp: new Date().toISOString(), type: "message", message });
   await handlers.get("message_end")?.({ type: "message_end", message }, context);
-  branch.push({
-    id: `entry-${nextEntry++}`, parentId: messageEntryID, timestamp: new Date().toISOString(), type: "message",
-    message: { role: "toolResult", toolCallId: "tool-e2e", toolName: "read", content: [{ type: "text", text: "ok" }], isError: false, timestamp: Date.now() },
-  });
   phase = "completed";
   await handlers.get("agent_settled")?.({ type: "agent_settled" }, context);
 }

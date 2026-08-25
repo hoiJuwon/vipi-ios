@@ -2,15 +2,18 @@ import Foundation
 
 enum ChatRole: String, Codable, Sendable { case user, assistant, system }
 
-enum ToolState: String, Codable, Sendable { case running, succeeded, failed }
+enum ProgressActivity: String, Codable, Sendable {
+    case thinking, reading, editing, running, searching
 
-struct ToolActivity: Identifiable, Codable, Hashable, Sendable {
-    var id: String
-    var name: String
-    var summary: String
-    var detail: String?
-    var state: ToolState
-    var changedFiles: Int?
+    var title: String {
+        switch self {
+        case .thinking: "Thinking"
+        case .reading: "Reading"
+        case .editing: "Editing"
+        case .running: "Running"
+        case .searching: "Searching"
+        }
+    }
 }
 
 struct ChatMessage: Identifiable, Codable, Hashable, Sendable {
@@ -19,7 +22,6 @@ struct ChatMessage: Identifiable, Codable, Hashable, Sendable {
     var text: String
     var timestamp: Date
     var isStreaming: Bool = false
-    var tools: [ToolActivity] = []
 }
 
 struct BranchNode: Identifiable, Codable, Hashable, Sendable {

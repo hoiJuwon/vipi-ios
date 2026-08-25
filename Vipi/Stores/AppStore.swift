@@ -16,6 +16,7 @@ final class AppStore {
     var activityItems: [ActivityItem] = []
     var draftsBySession: [String: String] = [:]
     var queuedPromptsBySession: [String: [QueuedPrompt]] = [:]
+    var progressBySession: [String: ProgressActivity] = [:]
     var commandError: String?
 
     private let broker: BrokerClient
@@ -76,6 +77,7 @@ final class AppStore {
     func branches(for id: String) -> [BranchNode] { branchesBySession[id] ?? [] }
     func draft(for id: String) -> String { draftsBySession[id] ?? "" }
     func queuedPrompts(for id: String) -> [QueuedPrompt] { queuedPromptsBySession[id] ?? [] }
+    func progressActivity(for id: String) -> ProgressActivity { progressBySession[id] ?? .thinking }
     func setDraft(_ draft: String, for id: String) {
         if draft.isEmpty {
             draftsBySession.removeValue(forKey: id)
@@ -274,6 +276,10 @@ final class AppStore {
     }
 
     private func apply(_ event: NormalizedEvent, to sessionID: String) {
+        if event.kind == "progress", let activity = event.activity {
+            progressBySession[sessionID] = activity
+            return
+        }
         if event.kind == "message", let role = event.role, let text = event.text {
             let message = ChatMessage(
                 id: event.messageID ?? UUID().uuidString,
@@ -291,17 +297,9 @@ final class AppStore {
                 $0.role == message.role && $0.text == message.text &&
                 abs($0.timestamp.timeIntervalSince(message.timestamp)) < 5
             })
-            let toolOnlyMessageIndex = message.role == .assistant && !message.text.isEmpty
-                ? messages.lastIndex(where: { $0.role == .assistant && $0.text.isEmpty && !$0.tools.isEmpty })
-                : nil
-            if let index = replacementIndex ?? stableIndex ?? semanticIndex ?? toolOnlyMessageIndex {
-                var updated = message
-                updated.tools = messages[index].tools
-                messages[index] = updated
+            if let index = replacementIndex ?? stableIndex ?? semanticIndex {
+                messages[index] = message
             } else { messages.append(message) }
-            if message.role == .assistant && !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                consolidateCurrentTurnTools(into: message.id, messages: &messages)
-            }
             messagesBySession[sessionID] = messages
             if message.role == .user { dequeuePrompt(matching: message.text, for: sessionID) }
             if let timestamp = event.timestamp {
@@ -310,31 +308,6 @@ final class AppStore {
                     sessions[index].lastActivityAt = lastMessageAtBySession[sessionID] ?? timestamp
                 }
             }
-        } else if event.kind == "tool", let toolCallID = event.toolCallID, let name = event.name {
-            let tool = ToolActivity(
-                id: toolCallID,
-                name: name,
-                summary: event.summary ?? name,
-                detail: event.detail,
-                state: event.state ?? .running
-            )
-            var messages = messagesBySession[sessionID, default: []]
-            if messages.isEmpty || messages.last?.role == .user {
-                messages.append(ChatMessage(id: "tools-\(toolCallID)", role: .assistant, text: "", timestamp: .now))
-            }
-            let existingToolMessageIndex = messages.firstIndex(where: { message in
-                message.tools.contains(where: { $0.id == tool.id })
-            })
-            let entryMessageIndex = event.entryID.flatMap { entryID in
-                messages.firstIndex(where: { $0.id == entryID })
-            }
-            guard let messageIndex = existingToolMessageIndex ?? entryMessageIndex ?? messages.indices.last else { return }
-            if let toolIndex = messages[messageIndex].tools.firstIndex(where: { $0.id == tool.id }) {
-                messages[messageIndex].tools[toolIndex] = tool
-            } else {
-                messages[messageIndex].tools.append(tool)
-            }
-            messagesBySession[sessionID] = messages
         }
         if let entryID = event.entryID { lastEntryBySession[sessionID] = entryID }
     }
@@ -348,31 +321,6 @@ final class AppStore {
         guard let index = queuedPromptsBySession[sessionID]?.firstIndex(where: { $0.text == text }) else { return }
         queuedPromptsBySession[sessionID]?.remove(at: index)
         if queuedPromptsBySession[sessionID]?.isEmpty == true { queuedPromptsBySession.removeValue(forKey: sessionID) }
-    }
-
-    private func consolidateCurrentTurnTools(into messageID: String, messages: inout [ChatMessage]) {
-        guard let targetIndex = messages.firstIndex(where: { $0.id == messageID }) else { return }
-        let previousUserIndex = messages[..<targetIndex].lastIndex(where: { $0.role == .user })
-        let turnStart = previousUserIndex.map { messages.index(after: $0) } ?? messages.startIndex
-        guard turnStart <= targetIndex else { return }
-
-        let turnMessageIDs = Set(messages[turnStart...targetIndex].map(\.id))
-        var tools: [ToolActivity] = []
-        for index in turnStart...targetIndex {
-            for tool in messages[index].tools {
-                if let existing = tools.firstIndex(where: { $0.id == tool.id }) {
-                    tools[existing] = tool
-                } else {
-                    tools.append(tool)
-                }
-            }
-            messages[index].tools.removeAll()
-        }
-        messages[targetIndex].tools = tools
-        messages.removeAll { message in
-            turnMessageIDs.contains(message.id) && message.id != messageID && message.role == .assistant &&
-            message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && message.tools.isEmpty
-        }
     }
 
     private func decode<Value: Decodable>(_ payload: JSONValue) -> Value? {
@@ -390,8 +338,7 @@ final class AppStore {
             role: .assistant,
             text: "좋아요. 현재 세션의 맥락을 이어서 확인하고 있습니다…",
             timestamp: .now,
-            isStreaming: true,
-            tools: [ToolActivity(id: UUID().uuidString, name: "read", summary: "프로젝트 구조 확인", detail: "Sources와 최근 변경 파일", state: .running)]
+            isStreaming: true
         )
         messagesBySession[sessionID, default: []].append(pending)
     }
@@ -435,6 +382,8 @@ final class AppStore {
                     updated.lastActivityAt = lastMessageAt
                     return updated
                 }
+                let workingSessionIDs = Set(sessions.filter { $0.phase == .working }.map(\.id))
+                progressBySession = progressBySession.filter { workingSessionIDs.contains($0.key) }
             } catch {
                 connectionState = .disconnected("Invalid session snapshot")
             }
@@ -529,13 +478,9 @@ private struct NormalizedEvent: Decodable {
     let text: String?
     let timestamp: Date?
     let streaming: Bool?
-    let toolCallID: String?
-    let name: String?
-    let state: ToolState?
-    let summary: String?
-    let detail: String?
     let entryID: String?
     let replacesMessageID: String?
+    let activity: ProgressActivity?
 }
 
 private struct EmptyPayload: Encodable {}

@@ -5,7 +5,7 @@ import { envelope, PROTOCOL_VERSION, type Envelope, type SessionRecord } from ".
 import { loadOrCreateToken, rotateToken, tokenMatches, tokenPath } from "./token.js";
 import { readTmuxRegistry } from "./registry.js";
 import { createPairingPayload } from "./pairing.js";
-import { normalizeHistory } from "./normalization.js";
+import { mobileActivityForTool, normalizeHistory } from "./normalization.js";
 import { readSessionBranch } from "./session-history.js";
 
 const host = process.env.VIPI_HOST ?? "127.0.0.1";
@@ -29,6 +29,7 @@ const runtimes = new Map<string, WebSocket>();
 const runtimePanes = new Map<string, string>();
 const liveSessions = new Map<string, SessionRecord>();
 const pendingRequests = new Map<string, WebSocket>();
+const pendingAssistantEvents = new Map<string, Record<string, unknown>>();
 
 const server = createServer((request, response) => {
   if (request.url === "/health") {
@@ -102,8 +103,19 @@ wss.on("connection", (socket) => {
     if (role === "runtime") {
       if (message.type === "runtime.session") {
         const session = message.payload.session as unknown as SessionRecord;
-        if (session?.id) liveSessions.set(session.id, session);
+        const previousPhase = session?.id ? liveSessions.get(session.id)?.phase : undefined;
+        if (session?.id) {
+          liveSessions.set(session.id, session);
+          if (session.phase === "working" && previousPhase !== "working") pendingAssistantEvents.delete(session.id);
+        }
         broadcast("sessions.snapshot", { sessions: mergedSessions() });
+        if (session?.id && session.phase !== "working") {
+          const pending = pendingAssistantEvents.get(session.id);
+          if (pending) {
+            pendingAssistantEvents.delete(session.id);
+            broadcast("session.event", pending);
+          }
+        }
       } else if (message.type === "runtime.response") {
         const requestID = typeof message.payload.requestID === "string" ? message.payload.requestID : undefined;
         const requester = requestID ? pendingRequests.get(requestID) : undefined;
@@ -111,6 +123,8 @@ wss.on("connection", (socket) => {
           requester.send(JSON.stringify(envelope("session.response", message.payload, requestID, ++sequence)));
         }
         if (requestID) pendingRequests.delete(requestID);
+      } else if (message.type === "runtime.event") {
+        relayRuntimeEvent(message.payload);
       } else if (message.type.startsWith("runtime.")) {
         broadcast(message.type.replace("runtime.", "session."), message.payload);
       }
@@ -165,6 +179,7 @@ wss.on("connection", (socket) => {
     if (runtimeSessionID && runtimes.get(runtimeSessionID) === socket) {
       runtimes.delete(runtimeSessionID);
       runtimePanes.delete(runtimeSessionID);
+      pendingAssistantEvents.delete(runtimeSessionID);
       const session = liveSessions.get(runtimeSessionID);
       if (session) liveSessions.set(runtimeSessionID, { ...session, phase: "offline" });
       broadcast("sessions.snapshot", { sessions: mergedSessions() });
@@ -193,6 +208,51 @@ function mergedSessions(): SessionRecord[] {
   ]));
   for (const [id, session] of liveSessions) sessions.set(id, session);
   return [...sessions.values()].sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt));
+}
+
+function relayRuntimeEvent(payload: Record<string, unknown>): void {
+  const sessionID = typeof payload.sessionID === "string" ? payload.sessionID : undefined;
+  const event = payload.event && typeof payload.event === "object" ? payload.event as Record<string, unknown> : undefined;
+  if (!sessionID || !event) return;
+
+  if (event.kind === "tool") {
+    const name = typeof event.name === "string" ? event.name : "tool";
+    const activity = event.state === "running" ? mobileActivityForTool(name) : "thinking";
+    broadcast("session.event", {
+      sessionID,
+      event: { kind: "progress", activity, timestamp: new Date().toISOString() },
+    });
+    return;
+  }
+  if (event.kind === "progress") {
+    const allowed = new Set(["thinking", "reading", "editing", "running", "searching"]);
+    const activity = typeof event.activity === "string" && allowed.has(event.activity) ? event.activity : "thinking";
+    broadcast("session.event", {
+      sessionID,
+      event: { kind: "progress", activity, timestamp: typeof event.timestamp === "string" ? event.timestamp : new Date().toISOString() },
+    });
+    return;
+  }
+  if (event.kind !== "message" || (event.role !== "user" && event.role !== "assistant")) return;
+  if (event.role === "assistant" && event.streaming === true) return;
+  const text = typeof event.text === "string" ? event.text : "";
+  if (!text.trim()) return;
+  const sanitized = {
+    sessionID,
+    event: {
+      kind: "message",
+      messageID: typeof event.messageID === "string" ? event.messageID : crypto.randomUUID(),
+      role: event.role,
+      text,
+      timestamp: typeof event.timestamp === "string" ? event.timestamp : new Date().toISOString(),
+      streaming: false,
+    },
+  };
+  if (event.role === "assistant" && liveSessions.get(sessionID)?.phase === "working") {
+    pendingAssistantEvents.set(sessionID, sanitized);
+  } else {
+    broadcast("session.event", sanitized);
+  }
 }
 
 function broadcast(type: string, payload: unknown): void {

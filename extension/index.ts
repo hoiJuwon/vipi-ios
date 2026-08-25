@@ -16,7 +16,6 @@ type RuntimeState = {
   reconnect?: NodeJS.Timeout;
   phase: string;
   unread: boolean;
-  activeMessageID?: string;
   disposed: boolean;
 };
 
@@ -136,37 +135,34 @@ export default function vipiBridge(pi: ExtensionAPI) {
 
   pi.on("session_start", async (_event, ctx) => { runtime.disposed = false; runtime.phase = "idle"; connect(ctx); send("runtime.session", { session: sessionSnapshot(ctx) }); });
   pi.on("session_info_changed", async (_event, ctx) => send("runtime.session", { session: sessionSnapshot(ctx) }));
-  pi.on("agent_start", async (_event, ctx) => { runtime.phase = "working"; runtime.unread = false; send("runtime.session", { session: sessionSnapshot(ctx) }); });
-  pi.on("message_start", async (event, ctx) => {
-    runtime.activeMessageID = persistedMessageID(event.message, ctx) ?? crypto.randomUUID();
-    const normalized = normalizeMessage(event.message, runtime.activeMessageID, true);
-    if (normalized) send("runtime.event", { sessionID: ctx.sessionManager.getSessionId(), event: normalized });
+  pi.on("agent_start", async (_event, ctx) => {
+    runtime.phase = "working";
+    runtime.unread = false;
+    send("runtime.session", { session: sessionSnapshot(ctx) });
+    send("runtime.event", {
+      sessionID: ctx.sessionManager.getSessionId(),
+      event: { kind: "progress", activity: "thinking", timestamp: new Date().toISOString() },
+    });
   });
-  pi.on("message_update", async (event, ctx) => {
-    runtime.activeMessageID ??= crypto.randomUUID();
-    const normalized = normalizeMessage(event.message, runtime.activeMessageID, true);
-    if (normalized) send("runtime.event", { sessionID: ctx.sessionManager.getSessionId(), event: normalized });
-  });
+  // Mobile intentionally receives no assistant deltas. Tool-use commentary can
+  // look like a final answer before the run is done, so only message_end sends
+  // a tool-free final response.
   pi.on("tool_execution_start", async (event, ctx) => {
     const normalized = normalizeToolEvent(event);
     if (normalized) send("runtime.event", { sessionID: ctx.sessionManager.getSessionId(), event: normalized });
   });
-  pi.on("tool_execution_update", async (event, ctx) => {
-    const normalized = normalizeToolEvent(event);
-    if (normalized) send("runtime.event", { sessionID: ctx.sessionManager.getSessionId(), event: normalized });
+  pi.on("tool_execution_update", async () => {
+    // Drop partial tool output at the source. It is large, sensitive, and not
+    // part of the mobile chat DTO.
   });
   pi.on("tool_execution_end", async (event, ctx) => {
     const normalized = normalizeToolEvent(event);
     if (normalized) send("runtime.event", { sessionID: ctx.sessionManager.getSessionId(), event: normalized });
   });
   pi.on("message_end", async (event, ctx) => {
-    runtime.activeMessageID ??= crypto.randomUUID();
-    const persistedID = persistedMessageID(event.message, ctx);
-    const messageID = persistedID ?? runtime.activeMessageID;
-    const replacesMessageID = persistedID && persistedID !== runtime.activeMessageID ? runtime.activeMessageID : undefined;
-    const normalized = normalizeMessage(event.message, messageID, false, undefined, replacesMessageID);
+    const messageID = persistedMessageID(event.message, ctx) ?? crypto.randomUUID();
+    const normalized = normalizeMessage(event.message, messageID, false);
     if (normalized) send("runtime.event", { sessionID: ctx.sessionManager.getSessionId(), event: normalized });
-    runtime.activeMessageID = undefined;
   });
   pi.on("agent_settled", async (_event, ctx) => { runtime.phase = "completed"; runtime.unread = true; send("runtime.session", { session: sessionSnapshot(ctx) }); });
   pi.on("session_shutdown", async () => {

@@ -1,8 +1,9 @@
-export type ChatRole = "user" | "assistant" | "system";
+export type ChatRole = "user" | "assistant";
+export type MobileActivity = "thinking" | "reading" | "editing" | "running" | "searching";
 
 export type NormalizedSessionEvent =
   | { kind: "message"; messageID: string; role: ChatRole; text: string; timestamp: string; streaming: boolean; entryID?: string; replacesMessageID?: string }
-  | { kind: "tool"; toolCallID: string; name: string; state: "running" | "succeeded" | "failed"; summary: string; detail?: string; entryID?: string };
+  | { kind: "progress"; activity: MobileActivity; timestamp: string };
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -15,10 +16,7 @@ function textContent(value: unknown): string {
   if (!Array.isArray(value)) return "";
   return value.flatMap((part) => {
     const item = record(part);
-    if (!item) return [];
-    if (item.type === "text" && typeof item.text === "string") return [item.text];
-    if (item.type === "thinking" && typeof item.thinking === "string") return [];
-    return [];
+    return item?.type === "text" && typeof item.text === "string" ? [item.text] : [];
   }).join("");
 }
 
@@ -28,10 +26,8 @@ function timestamp(value: unknown): string {
   return new Date().toISOString();
 }
 
-function safeDetail(value: unknown): string | undefined {
-  if (value === undefined) return undefined;
-  const raw = typeof value === "string" ? value : JSON.stringify(value);
-  return raw.length > 4_096 ? `${raw.slice(0, 4_096)}…` : raw;
+function hasToolCall(message: UnknownRecord): boolean {
+  return Array.isArray(message.content) && message.content.some((part) => record(part)?.type === "toolCall");
 }
 
 export function normalizeMessage(
@@ -42,14 +38,14 @@ export function normalizeMessage(
   replacesMessageID?: string,
 ): NormalizedSessionEvent | undefined {
   const message = record(messageValue);
-  if (!message) return undefined;
-  const role = message.role;
-  if (role !== "user" && role !== "assistant" && role !== "system") return undefined;
+  if (!message || (message.role !== "user" && message.role !== "assistant") || hasToolCall(message)) return undefined;
+  const text = textContent(message.content);
+  if (!text.trim()) return undefined;
   return {
     kind: "message",
     messageID,
-    role,
-    text: textContent(message.content),
+    role: message.role,
+    text,
     timestamp: timestamp(message.timestamp),
     streaming,
     ...(entryID ? { entryID } : {}),
@@ -57,64 +53,47 @@ export function normalizeMessage(
   };
 }
 
-export function normalizeToolEvent(eventValue: unknown, entryID?: string): NormalizedSessionEvent | undefined {
+export function mobileActivityForTool(name: string): MobileActivity {
+  const value = name.toLowerCase();
+  if (["edit", "write", "apply_patch"].some((token) => value.includes(token))) return "editing";
+  if (["read", "grep", "find", "glob", "ls"].some((token) => value.includes(token))) return "reading";
+  if (["search", "web", "fetch", "browse"].some((token) => value.includes(token))) return "searching";
+  return "running";
+}
+
+export function normalizeToolEvent(eventValue: unknown): NormalizedSessionEvent | undefined {
   const event = record(eventValue);
-  if (!event) return undefined;
-  const toolCallID = event.toolCallId;
-  const name = event.toolName;
-  if (typeof toolCallID !== "string" || typeof name !== "string") return undefined;
-  const type = event.type;
-  const failed = type === "tool_execution_end" && event.isError === true;
-  const state = type === "tool_execution_end" ? (failed ? "failed" : "succeeded") : "running";
-  const source = type === "tool_execution_start" ? event.args : type === "tool_execution_update" ? event.partialResult : event.result;
+  const name = event?.toolName;
+  if (typeof name !== "string") return undefined;
   return {
-    kind: "tool",
-    toolCallID,
-    name,
-    state,
-    summary: state === "running" ? `${name} running` : failed ? `${name} failed` : `${name} completed`,
-    ...(safeDetail(source) ? { detail: safeDetail(source) } : {}),
-    ...(entryID ? { entryID } : {}),
+    kind: "progress",
+    activity: event?.type === "tool_execution_end" ? "thinking" : mobileActivityForTool(name),
+    timestamp: new Date().toISOString(),
   };
 }
 
-function normalizeHistoryMessage(messageValue: unknown, entryID: string, index: number): NormalizedSessionEvent[] {
-  const message = record(messageValue);
-  if (!message) return [];
-  if (message.role === "toolResult") {
-    const toolCallID = message.toolCallId;
-    const name = message.toolName;
-    if (typeof toolCallID !== "string" || typeof name !== "string") return [];
-    return [{
-      kind: "tool",
-      toolCallID,
-      name,
-      state: message.isError === true ? "failed" : "succeeded",
-      summary: message.isError === true ? `${name} failed` : `${name} completed`,
-      ...(safeDetail(textContent(message.content)) ? { detail: safeDetail(textContent(message.content)) } : {}),
-      entryID,
-    }];
-  }
+function finalMessageIndexes(entries: UnknownRecord[]): Set<number> {
+  const result = new Set<number>();
+  let turnStart = 0;
+  for (let end = 0; end <= entries.length; end++) {
+    const role = end < entries.length && entries[end]?.type === "message"
+      ? record(entries[end]?.message)?.role
+      : undefined;
+    if (end < entries.length && role !== "user") continue;
 
-  const events: NormalizedSessionEvent[] = [];
-  const normalized = normalizeMessage(message, entryID || `history-${index}`, false, entryID);
-  if (normalized) events.push(normalized);
-  if (message.role === "assistant" && Array.isArray(message.content)) {
-    for (const partValue of message.content) {
-      const part = record(partValue);
-      if (part?.type !== "toolCall" || typeof part.id !== "string" || typeof part.name !== "string") continue;
-      events.push({
-        kind: "tool",
-        toolCallID: part.id,
-        name: part.name,
-        state: "running",
-        summary: `${part.name} running`,
-        ...(safeDetail(part.arguments) ? { detail: safeDetail(part.arguments) } : {}),
-        entryID,
-      });
+    const turnEnd = end;
+    const assistantCandidates: number[] = [];
+    for (let index = turnStart; index < turnEnd; index++) {
+      const entry = entries[index];
+      const message = entry?.type === "message" ? record(entry.message) : undefined;
+      if (message?.role === "assistant" && textContent(message.content).trim() && !hasToolCall(message)) {
+        assistantCandidates.push(index);
+      }
     }
+    if (assistantCandidates.length > 0) result.add(assistantCandidates.at(-1)!);
+    turnStart = end;
   }
-  return events;
+  return result;
 }
 
 const HISTORY_PAYLOAD_BUDGET = 384 * 1024;
@@ -129,7 +108,6 @@ function recentEventsWithinBudget(events: NormalizedSessionEvent[]): NormalizedS
     }
     const eventBytes = Buffer.byteLength(JSON.stringify(event), "utf8") + 1;
     if (selected.length > 0 && bytes + eventBytes > HISTORY_PAYLOAD_BUDGET) break;
-    if (eventBytes > HISTORY_PAYLOAD_BUDGET) continue;
     selected.push(event);
     bytes += eventBytes;
   }
@@ -163,25 +141,25 @@ export function normalizeHistory(entriesValue: unknown, options: HistoryOptions 
   } else {
     end = options.beforeEntryID && beforeIndex >= 0 ? beforeIndex : entries.length;
     start = Math.max(0, end - limit);
-    // Avoid opening in the middle of the latest user→Pi exchange whenever the
-    // bounded entry window can include its initiating user message.
     if (!options.beforeEntryID) {
       const latestUser = entries.slice(0, end).findLastIndex((entry) => entry.type === "message" && record(entry.message)?.role === "user");
       if (latestUser >= 0) start = Math.min(start, latestUser);
     }
   }
+
   const selected = entries.slice(start, end);
+  const finalAssistants = finalMessageIndexes(selected);
   const events: NormalizedSessionEvent[] = [];
   for (const [index, entry] of selected.entries()) {
+    if (entry.type !== "message") continue;
+    const message = record(entry.message);
+    const role = message?.role;
+    if (role !== "user" && !(role === "assistant" && finalAssistants.has(index))) continue;
     const entryID = typeof entry.id === "string" ? entry.id : `history-entry-${index}`;
-    if (entry.type === "message") {
-      events.push(...normalizeHistoryMessage(entry.message, entryID, index));
-      continue;
-    }
-    if ((entry.type === "compaction" || entry.type === "branch_summary") && typeof entry.summary === "string") {
-      events.push({ kind: "message", messageID: entryID, role: "system", text: entry.summary, timestamp: timestamp(entry.timestamp), streaming: false, entryID });
-    }
+    const normalized = normalizeMessage(message, entryID, false, entryID);
+    if (normalized) events.push(normalized);
   }
+
   const last = entries.at(-1)?.id;
   const oldest = selected.at(0)?.id;
   return {

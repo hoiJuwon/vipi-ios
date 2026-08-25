@@ -9,10 +9,10 @@ final class SessionModelTests: XCTestCase {
         XCTAssertTrue(groups[0].sessions.contains { $0.phase == .working })
     }
 
-    func testMockConversationHasStreamingToolActivity() {
+    func testMockConversationHasWorkingSessionAndPendingAnswer() {
         let messages = MockData.messages["mobile"] ?? []
         XCTAssertTrue(messages.contains(where: \.isStreaming))
-        XCTAssertTrue(messages.flatMap(\.tools).contains { $0.state == .running })
+        XCTAssertEqual(MockData.sessions.first(where: { $0.id == "mobile" })?.phase, .working)
     }
 
     @MainActor func testDraftsRemainPerSessionAcrossChatNavigation() {
@@ -43,41 +43,18 @@ final class SessionModelTests: XCTestCase {
         XCTAssertEqual(store.messages(for: "mobile").last?.text, "queued follow-up")
     }
 
-    @MainActor func testNormalizedStreamingAndToolEventsAreReducedIncrementally() async throws {
+    @MainActor func testMessagesAndMinimalProgressAreReducedWithoutToolPayloads() async throws {
         let store = AppStore()
         store.messagesBySession["wire"] = []
         func envelope(_ event: String) throws -> ServerEnvelope {
             let json = #"{"type":"session.event","seq":2,"payload":{"sessionID":"wire","event":\#(event)}}"#
             return try JSONDecoder().decode(ServerEnvelope.self, from: Data(json.utf8))
         }
-        try await store.handle(envelope(#"{"kind":"message","messageID":"m1","role":"assistant","text":"A","timestamp":"2026-08-24T00:00:00Z","streaming":true}"#))
-        try await store.handle(envelope(#"{"kind":"message","messageID":"m1","role":"assistant","text":"AB","timestamp":"2026-08-24T00:00:00Z","streaming":false}"#))
-        try await store.handle(envelope(#"{"kind":"tool","toolCallID":"t1","name":"read","state":"succeeded","summary":"read completed"}"#))
-        XCTAssertEqual(store.messages(for: "wire").count, 1)
-        XCTAssertEqual(store.messages(for: "wire")[0].text, "AB")
-        XCTAssertFalse(store.messages(for: "wire")[0].isStreaming)
-        XCTAssertEqual(store.messages(for: "wire")[0].tools.first?.state, .succeeded)
-    }
-
-    @MainActor func testCompletedToolRunCollapsesIntoFollowingAssistantMessage() async throws {
-        let store = AppStore()
-        func envelope(_ event: String) throws -> ServerEnvelope {
-            let json = #"{"type":"session.event","payload":{"sessionID":"tools","event":\#(event)}}"#
-            return try JSONDecoder().decode(ServerEnvelope.self, from: Data(json.utf8))
-        }
-
-        try await store.handle(envelope(#"{"kind":"tool","toolCallID":"edit-1","name":"edit","state":"running","summary":"edit running","detail":"file.swift"}"#))
-        try await store.handle(envelope(#"{"kind":"tool","toolCallID":"edit-1","name":"edit","state":"succeeded","summary":"edit completed","detail":"file.swift"}"#))
-        try await store.handle(envelope(#"{"kind":"message","messageID":"tool-phase-2","role":"assistant","text":"","timestamp":"2026-08-24T00:00:01Z","streaming":true}"#))
-        try await store.handle(envelope(#"{"kind":"tool","toolCallID":"bash-1","name":"bash","state":"succeeded","summary":"bash completed","detail":"npm test"}"#))
-        try await store.handle(envelope(#"{"kind":"message","messageID":"tool-phase-3","role":"assistant","text":"","timestamp":"2026-08-24T00:00:02Z","streaming":true}"#))
-        try await store.handle(envelope(#"{"kind":"tool","toolCallID":"bash-2","name":"bash","state":"succeeded","summary":"bash completed","detail":"git status"}"#))
-        try await store.handle(envelope(#"{"kind":"message","messageID":"answer","role":"assistant","text":"완료했습니다.","timestamp":"2026-08-24T00:00:03Z","streaming":true}"#))
-
-        XCTAssertEqual(store.messages(for: "tools").count, 1)
-        XCTAssertEqual(store.messages(for: "tools").first?.id, "answer")
-        XCTAssertEqual(store.messages(for: "tools").first?.tools.map(\.name), ["edit", "bash", "bash"])
-        XCTAssertTrue(store.messages(for: "tools").first?.tools.allSatisfy { $0.state == .succeeded } == true)
+        try await store.handle(envelope(#"{"kind":"progress","activity":"editing","timestamp":"2026-08-24T00:00:00Z"}"#))
+        XCTAssertEqual(store.progressActivity(for: "wire"), .editing)
+        XCTAssertTrue(store.messages(for: "wire").isEmpty)
+        try await store.handle(envelope(#"{"kind":"message","messageID":"m1","role":"assistant","text":"완료했습니다.","timestamp":"2026-08-24T00:00:01Z","streaming":false}"#))
+        XCTAssertEqual(store.messages(for: "wire").map(\.text), ["완료했습니다."])
     }
 
     @MainActor func testProductionConnectRejectsInsecureHostBeforeBroker() async {
@@ -115,7 +92,7 @@ final class SessionModelTests: XCTestCase {
         XCTAssertEqual(store.commandError, "runtime rejected")
     }
 
-    @MainActor func testLiveHistorySettlementAndReplayResetDoNotDuplicateMessagesOrTools() async throws {
+    @MainActor func testLiveHistorySettlementAndReplayResetDoNotDuplicateMessages() async throws {
         let store = AppStore()
         store.messagesBySession["reconcile"] = []
         func event(_ value: String) throws -> ServerEnvelope {
@@ -126,10 +103,9 @@ final class SessionModelTests: XCTestCase {
         }
         let timestamp = "2026-08-24T00:00:00Z"
         await store.handle(try event(#"{"kind":"message","messageID":"transient","role":"assistant","text":"settled answer","timestamp":"\#(timestamp)","streaming":false}"#))
-        await store.handle(try event(#"{"kind":"tool","toolCallID":"tool-1","name":"read","state":"succeeded","summary":"read completed"}"#))
         func history(_ id: String, replacesTransient: Bool) throws -> ServerEnvelope {
             let replacement = replacesTransient ? ",\"replacesMessageID\":\"transient\"" : ""
-            let json = #"{"id":"\#(id)","type":"session.response","payload":{"requestID":"\#(id)","ok":true,"result":{"events":[{"kind":"message","messageID":"entry-2"\#(replacement),"entryID":"entry-2","role":"assistant","text":"settled answer","timestamp":"\#(timestamp)","streaming":false},{"kind":"tool","toolCallID":"tool-1","name":"read","state":"succeeded","summary":"read completed","entryID":"entry-3"}],"lastEntryID":"entry-3"}}}"#
+            let json = #"{"id":"\#(id)","type":"session.response","payload":{"requestID":"\#(id)","ok":true,"result":{"events":[{"kind":"message","messageID":"entry-2"\#(replacement),"entryID":"entry-2","role":"assistant","text":"settled answer","timestamp":"\#(timestamp)","streaming":false}],"lastEntryID":"entry-2"}}}"#
             return try JSONDecoder().decode(ServerEnvelope.self, from: Data(json.utf8))
         }
         store.registerHistoryRequestForTesting(id: "history-1", sessionID: "reconcile")
@@ -138,8 +114,7 @@ final class SessionModelTests: XCTestCase {
         await store.handle(try history("history-2", replacesTransient: false))
         XCTAssertEqual(store.messages(for: "reconcile").count, 1)
         XCTAssertEqual(store.messages(for: "reconcile").first?.id, "entry-2")
-        XCTAssertEqual(store.messages(for: "reconcile").first?.tools.count, 1)
-        XCTAssertEqual(store.lastEntryForTesting(sessionID: "reconcile"), "entry-3")
+        XCTAssertEqual(store.lastEntryForTesting(sessionID: "reconcile"), "entry-2")
 
         let reset = try JSONDecoder().decode(
             ServerEnvelope.self,
@@ -150,8 +125,7 @@ final class SessionModelTests: XCTestCase {
         store.registerHistoryRequestForTesting(id: "history-3", sessionID: "reconcile")
         await store.handle(try history("history-3", replacesTransient: false))
         XCTAssertEqual(store.messages(for: "reconcile").count, 1)
-        XCTAssertEqual(store.messages(for: "reconcile").first?.tools.count, 1)
-        XCTAssertEqual(store.lastEntryForTesting(sessionID: "reconcile"), "entry-3")
+        XCTAssertEqual(store.lastEntryForTesting(sessionID: "reconcile"), "entry-2")
     }
 
     @MainActor func testTokenRotationUpdatesReconnectCredentialsBeforeReturning() async throws {

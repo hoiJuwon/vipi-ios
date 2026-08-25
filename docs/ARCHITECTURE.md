@@ -29,7 +29,7 @@ The device token is defense in depth in addition to tailnet membership. The app 
 
 ## Protocol evolution
 
-Every envelope carries `protocolVersion`. Unknown event types are ignored by the app. Durable reconnect uses monotonically increasing `seq` with a host-side bounded replay buffer. Full and incremental history are normalized from the active extension's `SessionManager`, including assistant tool calls and `toolResult` message entries, rather than replaying terminal pixels.
+Every envelope carries `protocolVersion`. Unknown event types are ignored by the app. Durable reconnect uses monotonically increasing `seq` with a host-side bounded replay buffer. Full and incremental history are normalized into user messages and final assistant answers only. Tool calls, `toolResult` entries, arguments, partial output, results, compaction summaries, and system messages are discarded before the mobile history DTO is encoded. Live tools are reduced at the extension/host boundary to a small progress category without payload content.
 
 ## Deliberate future scope
 

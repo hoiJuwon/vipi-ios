@@ -14,9 +14,9 @@ Implemented app surfaces:
 
 - workspace-grouped live session list
 - working, input-needed, completed, unread, and offline states
-- streaming chat transcript
+- final-answer chat transcript with intermediate tool output omitted
 - prompt / queue / steer composer
-- expandable tool execution cards
+- compact Thinking / Reading / Editing / Running progress with elapsed time
 - model, thinking, and context status
 - session details and conversation-branch sheets
 - cross-session activity feed
@@ -163,9 +163,11 @@ Client commands currently wired:
 Runtime events currently forwarded:
 
 - session registration and state snapshots
-- message streaming and completion
-- tool start, update, and end
+- final user/assistant messages
+- minimal `thinking`, `reading`, `editing`, `running`, or `searching` progress state
 - settled/completed status
+
+Tool arguments, partial output, results, files, and command output are discarded by the extension/host and are not part of the mobile history DTO.
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for ownership and roadmap details.
 
