@@ -111,6 +111,9 @@ final class VipiUITests: XCTestCase {
         let nextText = app.staticTexts["assistant.message.m2"]
         XCTAssertTrue(nextText.waitForExistence(timeout: 5))
         XCTAssertTrue(nextText.isHittable)
+        XCTAssertTrue(app.staticTexts["작업 흐름"].exists)
+        XCTAssertFalse(app.staticTexts["## 작업 흐름"].exists)
+        XCTAssertTrue(app.staticTexts["세션 목록에서 작업 선택"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["chat.progress"].exists)
         XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label == %@", "작업 기록")).count, 0)
         XCTAssertTrue(app.buttons["chat.menu"].isHittable)

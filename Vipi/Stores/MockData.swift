@@ -13,7 +13,7 @@ enum MockData {
             .init(id: "m0u", role: .user, text: "모바일 앱의 기본 방향을 정리해줘.", timestamp: .now.addingTimeInterval(-700)),
             .init(id: "m0a", role: .assistant, text: "터미널 세부 정보는 숨기고 일반적인 채팅 흐름에 집중하겠습니다.", timestamp: .now.addingTimeInterval(-650)),
             .init(id: "m1", role: .user, text: "모바일에서는 Vim UX 없이 좋은 채팅앱처럼 만들고 싶어. tmux 세션을 그대로 연결해줘.", timestamp: .now.addingTimeInterval(-520)),
-            .init(id: "m2", role: .assistant, text: "좋습니다. 모바일은 tmux를 전혀 노출하지 않고, **세션 목록 → 채팅 → 작업 상태** 흐름으로 설계하겠습니다.\n\n호스트에서는 tmux가 Pi 프로세스 생명주기를 유지하고, 앱은 Tailscale을 통해 세션 이벤트만 받습니다.", timestamp: .now.addingTimeInterval(-470)),
+            .init(id: "m2", role: .assistant, text: "## 작업 흐름\n\n모바일은 tmux를 노출하지 않고 다음 흐름에 집중합니다.\n\n- **세션 목록**에서 작업 선택\n- 채팅에서 요청 전송\n- `Thinking` 상태로 진행 확인\n\n> 호스트가 Pi 프로세스 생명주기를 유지하고 앱은 Tailscale로 세션 이벤트만 받습니다.", timestamp: .now.addingTimeInterval(-470)),
             .init(id: "m3", role: .user, text: "앱의 초안을 실제로 만들어줘.", timestamp: .now.addingTimeInterval(-210)),
             .init(id: "m4", role: .assistant, text: "현재 앱 셸과 연결 프로토콜을 구성하고 있습니다.", timestamp: .now.addingTimeInterval(-170), isStreaming: true)
         ],

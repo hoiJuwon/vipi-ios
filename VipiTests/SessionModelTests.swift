@@ -2,6 +2,39 @@ import XCTest
 @testable import Vipi
 
 final class SessionModelTests: XCTestCase {
+    func testMobileMarkdownParsesReadableBlocksAndCapsHeadingLevels() {
+        let source = """
+        # 큰 제목
+        ### 작은 제목
+
+        본문에 **강조**와 `코드`
+
+        - 항목
+        - [x] 완료
+        1. 순서
+        > 인용
+        ---
+        ```swift
+        let value = 1
+        ```
+        """
+
+        XCTAssertEqual(
+            MobileMarkdownParser.parse(source),
+            [
+                .heading(level: 1, text: "큰 제목"),
+                .heading(level: 3, text: "작은 제목"),
+                .paragraph("본문에 **강조**와 `코드`"),
+                .unorderedItem(marker: "•", text: "항목"),
+                .unorderedItem(marker: "checkmark.square.fill", text: "완료"),
+                .orderedItem(number: "1.", text: "순서"),
+                .quote("인용"),
+                .divider,
+                .code(language: "swift", text: "let value = 1")
+            ]
+        )
+    }
+
     func testWorkspaceGroupingKeepsWorkingWorkspaceFirst() async {
         let store = await AppStore(startsInDemoMode: true)
         let groups = await store.workspaceGroups

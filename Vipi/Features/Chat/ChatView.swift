@@ -318,13 +318,218 @@ private struct ChatMessageRow: View {
                     .vipiGlass(tint: VipiTheme.accent, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
         } else {
-            Text(.init(message.text))
-                .font(.body)
+            MarkdownMessageView(source: message.text, messageID: message.id)
                 .foregroundStyle(VipiTheme.primary)
                 .textSelection(.enabled)
-                .accessibilityIdentifier("assistant.message.\(message.id)")
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+}
+
+enum MobileMarkdownBlock: Equatable {
+    case heading(level: Int, text: String)
+    case paragraph(String)
+    case unorderedItem(marker: String, text: String)
+    case orderedItem(number: String, text: String)
+    case quote(String)
+    case code(language: String?, text: String)
+    case divider
+}
+
+enum MobileMarkdownParser {
+    static func parse(_ source: String) -> [MobileMarkdownBlock] {
+        let lines = source.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
+        var blocks: [MobileMarkdownBlock] = []
+        var paragraph: [String] = []
+        var index = 0
+
+        func flushParagraph() {
+            guard !paragraph.isEmpty else { return }
+            blocks.append(.paragraph(paragraph.joined(separator: "\n")))
+            paragraph.removeAll()
+        }
+
+        while index < lines.count {
+            let line = lines[index]
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+
+            if trimmed.hasPrefix("```") {
+                flushParagraph()
+                let language = String(trimmed.dropFirst(3)).trimmingCharacters(in: .whitespaces)
+                var codeLines: [String] = []
+                index += 1
+                while index < lines.count && !lines[index].trimmingCharacters(in: .whitespaces).hasPrefix("```") {
+                    codeLines.append(lines[index])
+                    index += 1
+                }
+                blocks.append(.code(language: language.isEmpty ? nil : language, text: codeLines.joined(separator: "\n")))
+            } else if trimmed.isEmpty {
+                flushParagraph()
+            } else if let heading = heading(from: trimmed) {
+                flushParagraph()
+                blocks.append(.heading(level: heading.level, text: heading.text))
+            } else if ["---", "***", "___"].contains(trimmed) {
+                flushParagraph()
+                blocks.append(.divider)
+            } else if trimmed.hasPrefix(">") {
+                flushParagraph()
+                let value = String(trimmed.dropFirst()).trimmingCharacters(in: .whitespaces)
+                blocks.append(.quote(value))
+            } else if let item = unorderedItem(from: trimmed) {
+                flushParagraph()
+                blocks.append(.unorderedItem(marker: item.marker, text: item.text))
+            } else if let item = orderedItem(from: trimmed) {
+                flushParagraph()
+                blocks.append(.orderedItem(number: item.number, text: item.text))
+            } else {
+                paragraph.append(line)
+            }
+            index += 1
+        }
+        flushParagraph()
+        return blocks
+    }
+
+    private static func heading(from line: String) -> (level: Int, text: String)? {
+        let level = min(line.prefix(while: { $0 == "#" }).count, 6)
+        guard level > 0 else { return nil }
+        let boundary = line.index(line.startIndex, offsetBy: level)
+        guard boundary < line.endIndex, line[boundary].isWhitespace else { return nil }
+        return (level, String(line[boundary...]).trimmingCharacters(in: .whitespaces))
+    }
+
+    private static func unorderedItem(from line: String) -> (marker: String, text: String)? {
+        guard line.count >= 2, ["- ", "* ", "+ "].contains(String(line.prefix(2))) else { return nil }
+        var text = String(line.dropFirst(2))
+        var marker = "•"
+        if text.hasPrefix("[x] ") || text.hasPrefix("[X] ") {
+            marker = "checkmark.square.fill"
+            text = String(text.dropFirst(4))
+        } else if text.hasPrefix("[ ] ") {
+            marker = "square"
+            text = String(text.dropFirst(4))
+        }
+        return (marker, text)
+    }
+
+    private static func orderedItem(from line: String) -> (number: String, text: String)? {
+        guard let dot = line.firstIndex(of: "."), dot < line.index(before: line.endIndex) else { return nil }
+        let number = String(line[..<dot])
+        guard !number.isEmpty, number.allSatisfy(\.isNumber), line[line.index(after: dot)].isWhitespace else { return nil }
+        return (number + ".", String(line[line.index(after: dot)...]).trimmingCharacters(in: .whitespaces))
+    }
+}
+
+private struct MarkdownMessageView: View {
+    let source: String
+    let messageID: String
+
+    private var blocks: [MobileMarkdownBlock] { MobileMarkdownParser.parse(source) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
+                blockView(block, isAnchor: index == 0)
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder
+    private func blockView(_ block: MobileMarkdownBlock, isAnchor: Bool) -> some View {
+        switch block {
+        case let .heading(level, text):
+            inlineText(text)
+                .font(headingFont(level))
+                .padding(.top, level <= 2 ? 4 : 1)
+                .messageAnchor(isAnchor ? "assistant.message.\(messageID)" : nil)
+        case let .paragraph(text):
+            inlineText(text)
+                .font(.body)
+                .lineSpacing(3)
+                .messageAnchor(isAnchor ? "assistant.message.\(messageID)" : nil)
+        case let .unorderedItem(marker, text):
+            HStack(alignment: .firstTextBaseline, spacing: 9) {
+                if marker == "•" {
+                    Text("•").font(.body.weight(.semibold))
+                } else {
+                    Image(systemName: marker).font(.caption.weight(.semibold)).foregroundStyle(VipiTheme.accent)
+                }
+                inlineText(text).font(.body).lineSpacing(3)
+                    .messageAnchor(isAnchor ? "assistant.message.\(messageID)" : nil)
+            }
+            .padding(.leading, 4)
+        case let .orderedItem(number, text):
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(number).font(.body.monospacedDigit()).foregroundStyle(VipiTheme.secondary)
+                inlineText(text).font(.body).lineSpacing(3)
+                    .messageAnchor(isAnchor ? "assistant.message.\(messageID)" : nil)
+            }
+            .padding(.leading, 4)
+        case let .quote(text):
+            HStack(alignment: .top, spacing: 10) {
+                RoundedRectangle(cornerRadius: 2).fill(VipiTheme.accent.opacity(0.65)).frame(width: 3)
+                inlineText(text).font(.body.italic()).foregroundStyle(VipiTheme.secondary)
+                    .messageAnchor(isAnchor ? "assistant.message.\(messageID)" : nil)
+            }
+        case let .code(language, text):
+            VStack(alignment: .leading, spacing: 7) {
+                if let language {
+                    Text(language.uppercased())
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(VipiTheme.secondary)
+                }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    Text(verbatim: text)
+                        .font(.system(.footnote, design: .monospaced))
+                        .messageAnchor(isAnchor ? "assistant.message.\(messageID)" : nil)
+                }
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(VipiTheme.stroke, lineWidth: 0.75)
+            }
+        case .divider:
+            Divider().overlay(VipiTheme.stroke).padding(.vertical, 3)
+        }
+    }
+
+    private func inlineText(_ source: String) -> Text {
+        let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        guard let attributed = try? AttributedString(markdown: source, options: options) else {
+            return Text(verbatim: source)
+        }
+        return Text(attributed)
+    }
+
+    private func headingFont(_ level: Int) -> Font {
+        switch level {
+        case 1: .title3.weight(.bold)
+        case 2: .headline.weight(.bold)
+        case 3: .body.weight(.semibold)
+        default: .subheadline.weight(.semibold)
+        }
+    }
+}
+
+private struct MessageAnchorModifier: ViewModifier {
+    let identifier: String?
+
+    func body(content: Content) -> some View {
+        if let identifier {
+            content.accessibilityIdentifier(identifier)
+        } else {
+            content
+        }
+    }
+}
+
+private extension View {
+    func messageAnchor(_ identifier: String?) -> some View {
+        modifier(MessageAnchorModifier(identifier: identifier))
     }
 }
 
