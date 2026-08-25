@@ -257,6 +257,43 @@ test("routes prompt modes, abort, history, responses, and tool events", async ()
   runtime.close();
 });
 
+test("routes mobile commands only to the tmux pane currently in the registry", async () => {
+  const registryPath = join(directory, "tmux-session-tree.json");
+  writeFileSync(registryPath, JSON.stringify({ entries: [{
+    piSessionId: "visible-session", name: "Visible", cwd: "/tmp/visible",
+    status: "idle", tmuxSession: "visible", tmuxWindow: "1", tmuxPaneId: "%new",
+    lastSeen: new Date().toISOString(),
+  }] }));
+
+  const stale = await connect();
+  const staleClosed = new Promise<number>((resolve) => stale.once("close", (code) => resolve(code)));
+  send(stale, "runtime.register", { token, session: {
+    id: "visible-session", name: "Stale", cwd: "/tmp/visible", phase: "idle", unread: false,
+    lastActivityAt: new Date().toISOString(), model: "Pi", thinkingLevel: "off", contextPercent: 0,
+    tmux: { session: "visible", window: "old", paneID: "%old" },
+  } });
+  assert.equal(await staleClosed, 4009);
+
+  const active = await connect();
+  send(active, "runtime.register", { token, session: {
+    id: "visible-session", name: "Visible", cwd: "/tmp/visible", phase: "idle", unread: false,
+    lastActivityAt: new Date().toISOString(), model: "Pi", thinkingLevel: "off", contextPercent: 0,
+    tmux: { session: "visible", window: "1", paneID: "%new" },
+  } });
+  const mobile = await connect();
+  send(mobile, "auth.authenticate", { token }, "visible-auth");
+  await receiveType(mobile, "auth.ok");
+  await receiveType(mobile, "sessions.snapshot");
+  send(mobile, "session.prompt", { sessionID: "visible-session", text: "visible prompt", delivery: "prompt" }, "visible-prompt");
+  const forwarded = await receive(active);
+  assert.equal(forwarded.id, "visible-prompt");
+  assert.equal(forwarded.payload.text, "visible prompt");
+
+  mobile.close();
+  active.close();
+  await rm(registryPath, { force: true });
+});
+
 test("allows sustained runtime streaming above the mobile command rate", async () => {
   const runtime = await connect();
   send(runtime, "runtime.register", { token, session: {

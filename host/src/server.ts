@@ -26,6 +26,7 @@ const runtimeRateLimit = Math.max(1_000, Number(process.env.VIPI_RUNTIME_RATE_LI
 const replayBuffer: Envelope[] = [];
 const mobileClients = new Set<WebSocket>();
 const runtimes = new Map<string, WebSocket>();
+const runtimePanes = new Map<string, string>();
 const liveSessions = new Map<string, SessionRecord>();
 const pendingRequests = new Map<string, WebSocket>();
 
@@ -76,7 +77,16 @@ wss.on("connection", (socket) => {
       if (message.type === "runtime.register" && tokenMatches(token, message.payload?.token)) {
         const session = message.payload.session as unknown as SessionRecord;
         if (!session?.id) { socket.close(4003, "invalid session"); return; }
-        role = "runtime"; runtimeSessionID = session.id; runtimes.set(session.id, socket); liveSessions.set(session.id, session);
+        const registered = readTmuxRegistry().find((candidate) => candidate.id === session.id);
+        const paneID = session.tmux?.paneID;
+        if (registered && paneID && registered.tmux.paneID !== paneID) {
+          socket.close(4009, "stale tmux runtime"); return;
+        }
+        const previous = runtimes.get(session.id);
+        if (previous && previous !== socket) previous.close(4009, "runtime replaced");
+        role = "runtime"; runtimeSessionID = session.id; runtimes.set(session.id, socket);
+        if (paneID) runtimePanes.set(session.id, paneID);
+        liveSessions.set(session.id, session);
         clearTimeout(authTimer); broadcast("sessions.snapshot", { sessions: mergedSessions() });
         return;
       }
@@ -134,7 +144,7 @@ wss.on("connection", (socket) => {
         }
       }
     }
-    const runtime = runtimes.get(sessionID);
+    const runtime = currentRuntime(sessionID);
     if (!runtime || runtime.readyState !== WebSocket.OPEN) {
       socket.send(JSON.stringify(envelope("error", { code: "SESSION_OFFLINE", sessionID }, message.id, ++sequence)));
       return;
@@ -148,6 +158,7 @@ wss.on("connection", (socket) => {
     for (const [requestID, requester] of pendingRequests) if (requester === socket) pendingRequests.delete(requestID);
     if (runtimeSessionID && runtimes.get(runtimeSessionID) === socket) {
       runtimes.delete(runtimeSessionID);
+      runtimePanes.delete(runtimeSessionID);
       const session = liveSessions.get(runtimeSessionID);
       if (session) liveSessions.set(runtimeSessionID, { ...session, phase: "offline" });
       broadcast("sessions.snapshot", { sessions: mergedSessions() });
@@ -155,10 +166,24 @@ wss.on("connection", (socket) => {
   });
 });
 
+function currentRuntime(sessionID: string): WebSocket | undefined {
+  const runtime = runtimes.get(sessionID);
+  if (!runtime || runtime.readyState !== WebSocket.OPEN) return undefined;
+  const registered = readTmuxRegistry().find((candidate) => candidate.id === sessionID);
+  const runtimePane = runtimePanes.get(sessionID);
+  if (registered && runtimePane && registered.tmux.paneID !== runtimePane) {
+    runtimes.delete(sessionID);
+    runtimePanes.delete(sessionID);
+    runtime.close(4009, "stale tmux runtime");
+    return undefined;
+  }
+  return runtime;
+}
+
 function mergedSessions(): SessionRecord[] {
   const sessions = new Map(readTmuxRegistry().map((session) => [
     session.id,
-    runtimes.get(session.id)?.readyState === WebSocket.OPEN ? session : { ...session, phase: "offline" as const },
+    currentRuntime(session.id) ? session : { ...session, phase: "offline" as const },
   ]));
   for (const [id, session] of liveSessions) sessions.set(id, session);
   return [...sessions.values()].sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt));

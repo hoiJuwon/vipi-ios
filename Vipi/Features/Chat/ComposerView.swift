@@ -4,7 +4,7 @@ struct ComposerView: View {
     @Binding var draft: String
     let phase: SessionPhase
     let onSend: (PromptDelivery) -> Void
-    @State private var selectedDelivery: PromptDelivery = .prompt
+    @State private var selectedDelivery: PromptDelivery = .followUp
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 9) {
