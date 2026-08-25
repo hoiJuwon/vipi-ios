@@ -128,10 +128,6 @@ struct ChatView: View {
                                 )
                                 .id("working-status")
                             }
-                            Color.clear
-                                .frame(height: UIScreen.main.bounds.height * 0.62)
-                                .accessibilityHidden(true)
-                                .allowsHitTesting(false)
                         }
                         .padding(.horizontal, 16)
                         .padding(.vertical, 18)

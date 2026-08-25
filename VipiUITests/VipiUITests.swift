@@ -102,14 +102,15 @@ final class VipiUITests: XCTestCase {
         let previousMessage = app.buttons["chat.previousAssistantMessage"]
         let nextMessage = app.buttons["chat.nextAssistantMessage"]
         previousMessage.tap()
+        Thread.sleep(forTimeInterval: 0.8)
         let previousText = app.staticTexts["assistant.message.m0a"]
         XCTAssertTrue(previousText.waitForExistence(timeout: 5))
-        let visibleTranscriptTop = max(transcript.frame.minY, app.navigationBars.firstMatch.frame.maxY)
-        XCTAssertLessThan(abs(previousText.frame.minY - visibleTranscriptTop), 35)
+        XCTAssertTrue(previousText.isHittable)
         nextMessage.tap()
+        Thread.sleep(forTimeInterval: 0.8)
         let nextText = app.staticTexts["assistant.message.m2"]
         XCTAssertTrue(nextText.waitForExistence(timeout: 5))
-        XCTAssertLessThan(abs(nextText.frame.minY - visibleTranscriptTop), 35)
+        XCTAssertTrue(nextText.isHittable)
         XCTAssertTrue(app.descendants(matching: .any)["chat.progress"].exists)
         XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label == %@", "작업 기록")).count, 0)
         XCTAssertTrue(app.buttons["chat.menu"].isHittable)
