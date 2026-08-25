@@ -574,21 +574,21 @@ private struct WorkingStatusView: View {
     var body: some View {
         TimelineView(.periodic(from: .now, by: 0.45)) { context in
             VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 7) {
-                    Text(activity.title + animatedDots(at: context.date))
-                        .font(.body.italic())
-                        .foregroundStyle(VipiTheme.primary)
-                        .contentTransition(.interpolate)
-                        .animation(.easeInOut(duration: 0.2), value: activity)
-                    LiquidOrbView()
-                        .frame(width: 44, height: 44)
-                        .frame(width: 27, height: 13)
-                        .clipped()
-                        .shadow(color: VipiTheme.accent.opacity(0.38), radius: 6)
-                }
+                Text(activity.title + animatedDots(at: context.date))
+                    .font(.body.italic())
+                    .foregroundStyle(VipiTheme.primary)
+                    .contentTransition(.interpolate)
+                    .animation(.easeInOut(duration: 0.2), value: activity)
                 Text(elapsedText(at: context.date))
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(VipiTheme.secondary)
+                LiquidOrbView()
+                    .frame(width: 44, height: 44)
+                    .offset(x: -11)
+                    .frame(width: 27, height: 13, alignment: .leading)
+                    .clipped()
+                    .shadow(color: VipiTheme.accent.opacity(0.38), radius: 6)
+                    .padding(.top, 2)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 3)
