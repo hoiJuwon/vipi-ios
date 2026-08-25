@@ -15,6 +15,19 @@ final class SessionModelTests: XCTestCase {
         XCTAssertTrue(messages.flatMap(\.tools).contains { $0.state == .running })
     }
 
+    @MainActor func testDraftsRemainPerSessionAcrossChatNavigation() {
+        let store = AppStore()
+        store.setDraft("first draft", for: "session-a")
+        store.setDraft("second draft", for: "session-b")
+
+        XCTAssertEqual(store.draft(for: "session-a"), "first draft")
+        XCTAssertEqual(store.draft(for: "session-b"), "second draft")
+
+        store.setDraft("", for: "session-a")
+        XCTAssertEqual(store.draft(for: "session-a"), "")
+        XCTAssertEqual(store.draft(for: "session-b"), "second draft")
+    }
+
     @MainActor func testNormalizedStreamingAndToolEventsAreReducedIncrementally() async throws {
         let store = AppStore()
         store.messagesBySession["wire"] = []

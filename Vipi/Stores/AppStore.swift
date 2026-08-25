@@ -14,6 +14,7 @@ final class AppStore {
     var selectedSessionID: String?
     var showingSettings = false
     var activityItems: [ActivityItem] = []
+    var draftsBySession: [String: String] = [:]
     var commandError: String?
 
     private let broker: BrokerClient
@@ -72,6 +73,14 @@ final class AppStore {
     }
     func messages(for id: String) -> [ChatMessage] { messagesBySession[id] ?? [] }
     func branches(for id: String) -> [BranchNode] { branchesBySession[id] ?? [] }
+    func draft(for id: String) -> String { draftsBySession[id] ?? "" }
+    func setDraft(_ draft: String, for id: String) {
+        if draft.isEmpty {
+            draftsBySession.removeValue(forKey: id)
+        } else {
+            draftsBySession[id] = draft
+        }
+    }
     func isHistoryLoading(for id: String) -> Bool { historyRequestsInFlight.contains(id) }
     func canLoadOlderHistory(for id: String) -> Bool { historyHasMoreBySession[id] == true }
 

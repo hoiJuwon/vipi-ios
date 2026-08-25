@@ -3,7 +3,6 @@ import SwiftUI
 struct ChatView: View {
     @Environment(AppStore.self) private var store
     let sessionID: String
-    @State private var draft = ""
     @State private var showDetails = false
     @State private var showBranches = false
     @State private var focusedAssistantID: String?
@@ -17,10 +16,10 @@ struct ChatView: View {
             transcript
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            ComposerView(draft: $draft, phase: session?.phase ?? .offline) { mode in
-                let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+            ComposerView(draft: draftBinding, phase: session?.phase ?? .offline) { mode in
+                let text = store.draft(for: sessionID).trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !text.isEmpty else { return }
-                draft = ""
+                store.setDraft("", for: sessionID)
                 Task { await store.send(text: text, to: sessionID, delivery: mode) }
             }
         }
@@ -64,6 +63,13 @@ struct ChatView: View {
         .sheet(isPresented: $showBranches) {
             BranchesSheet(nodes: store.branches(for: sessionID))
         }
+    }
+
+    private var draftBinding: Binding<String> {
+        Binding(
+            get: { store.draft(for: sessionID) },
+            set: { store.setDraft($0, for: sessionID) }
+        )
     }
 
     private var commandErrorPresented: Binding<Bool> {
