@@ -8,7 +8,6 @@ struct LiquidOrbView: View {
 
     var body: some View {
         LiquidOrbSurface(isPaused: reduceMotion)
-            .clipShape(Circle())
             .accessibilityHidden(true)
     }
 }
@@ -37,8 +36,9 @@ private final class LiquidOrbRenderer: NSObject, MTKViewDelegate {
         view.preferredFramesPerSecond = 30
         view.enableSetNeedsDisplay = false
         view.isPaused = false
-        view.isOpaque = true
-        view.clearColor = MTLClearColor(red: 3 / 255, green: 4 / 255, blue: 9 / 255, alpha: 1)
+        view.isOpaque = false
+        view.backgroundColor = .clear
+        view.clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
 
         pipeline = try LiquidOrbPipelineCache.pipeline(device: device, pixelFormat: view.colorPixelFormat)
         guard let queue = device.makeCommandQueue() else {
@@ -98,6 +98,11 @@ private enum LiquidOrbPipelineCache {
         descriptor.vertexFunction = vertex
         descriptor.fragmentFunction = fragment
         descriptor.colorAttachments[0].pixelFormat = pixelFormat
+        descriptor.colorAttachments[0].isBlendingEnabled = true
+        descriptor.colorAttachments[0].sourceRGBBlendFactor = .sourceAlpha
+        descriptor.colorAttachments[0].destinationRGBBlendFactor = .oneMinusSourceAlpha
+        descriptor.colorAttachments[0].sourceAlphaBlendFactor = .one
+        descriptor.colorAttachments[0].destinationAlphaBlendFactor = .oneMinusSourceAlpha
         let pipeline = try device.makeRenderPipelineState(descriptor: descriptor)
         cached = pipeline
         return pipeline

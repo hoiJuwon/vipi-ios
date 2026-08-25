@@ -1608,7 +1608,11 @@ fragment fs_mainOutput fs_main(
     float fitFeather = 2.0 / metal::max(metal::min(u.size.x, u.size.y), 1.0);
     float fitStart = metal::min(metal::mix(contourRad_1, fitEnd, 0.5), fitEnd - fitFeather);
     float fit = 1.0 - metal::smoothstep(fitStart, fitEnd, metal::max(metal::abs(q_12.x), metal::abs(q_12.y)));
-    float _e97 = u.edgeGlow;
-    float alpha = (_e97 > 0.0) ? metal::max(ballA_1, lum_1) : ballA_1;
-    return fs_mainOutput { metal::float4(_e2.xyz * fit, metal::clamp(alpha, 0.0, 1.0) * fit) };
+    // Vipi uses only the moving luminous core as an inline typing signal.
+    // Fade the glass shell and canvas instead of presenting the full orb as a button.
+    float centerBand = metal::exp(-metal::pow(metal::abs(uv_4.y) * 4.2, 2.0));
+    float sideFade = 1.0 - metal::smoothstep(0.35, 0.82, metal::abs(uv_4.x));
+    float lightEnergy = metal::smoothstep(0.08, 0.48, lum_1);
+    float signalAlpha = metal::clamp(centerBand * sideFade * lightEnergy * 1.45, 0.0, 1.0) * fit;
+    return fs_mainOutput { metal::float4(_e2.xyz, signalAlpha) };
 }

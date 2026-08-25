@@ -544,43 +544,46 @@ private struct WorkingStatusView: View {
     let startedAt: Date
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { context in
-            HStack(spacing: 13) {
-                LiquidOrbView()
-                    .frame(width: 58, height: 58)
-                    .overlay {
-                        Circle().stroke(VipiTheme.highlight.opacity(0.55), lineWidth: 0.75)
-                    }
-                    .shadow(color: VipiTheme.accent.opacity(0.22), radius: 12)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("\(activity.title)…")
-                        .font(.subheadline.weight(.semibold))
+        TimelineView(.periodic(from: .now, by: 0.45)) { context in
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 8) {
+                    LiquidOrbView()
+                        .frame(width: 52, height: 52)
+                        .frame(width: 34, height: 16)
+                        .clipped()
+                        .shadow(color: VipiTheme.accent.opacity(0.42), radius: 7)
+                    Text(statusText + animatedDots(at: context.date))
+                        .font(.body.weight(.medium))
                         .foregroundStyle(VipiTheme.primary)
-                    Text(elapsedText(at: context.date))
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(VipiTheme.secondary)
+                        .contentTransition(.interpolate)
+                        .animation(.easeInOut(duration: 0.2), value: activity)
                 }
-                Spacer()
+                Text(elapsedText(at: context.date))
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(VipiTheme.secondary)
+                    .padding(.leading, 42)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(
-                        LinearGradient(
-                            colors: [VipiTheme.highlight.opacity(0.7), VipiTheme.accent.opacity(0.18)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 0.75
-                    )
-            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 3)
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("chat.progress")
             .accessibilityLabel(activity.title)
             .accessibilityValue(elapsedText(at: context.date))
         }
+    }
+
+    private var statusText: String {
+        switch activity {
+        case .thinking: "Thinking"
+        case .reading: "Reading context"
+        case .editing: "Making changes"
+        case .running: "Running commands"
+        case .searching: "Searching"
+        }
+    }
+
+    private func animatedDots(at date: Date) -> String {
+        String(repeating: ".", count: Int(date.timeIntervalSinceReferenceDate / 0.45) % 3 + 1)
     }
 
     private func elapsedText(at date: Date) -> String {

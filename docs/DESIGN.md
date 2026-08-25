@@ -28,6 +28,6 @@ Official references:
 - **Functional glass:** composer, compact context/status layer, and toolbar actions float above content.
 - **Atmosphere:** restrained Ice Blue and blue gradients provide color for the glass to sample without competing with text.
 - **Identity:** Ice Blue is the primary accent across bubbles, controls, selection, and ambient gradients; use a dark foreground on bright Ice Blue surfaces in dark appearance.
-- **Working state:** the compact status card uses an animated Ice Blue Liquid Orb adapted from `LerSent001/orb`; elapsed time and the activity label remain the accessible source of status information.
+- **Working state:** progress reads like the next assistant message, never a button or card. Only the animated luminous core from the Ice Blue Liquid Orb is shown inline beside changing status copy and elapsed time; the orb shell, material background, and border stay hidden.
 - **Status color:** color communicates state but never serves as the only indicator.
 - **Motion:** freeze the Liquid Orb to a representative frame when Reduce Motion is enabled.
