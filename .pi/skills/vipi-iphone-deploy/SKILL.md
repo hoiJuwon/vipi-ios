@@ -21,6 +21,7 @@ The script performs the entire workflow without creating a Pi or tmux session:
 6. Installs over the existing canonical app so its data container and pairing state are preserved.
 7. Removes only the known accidental duplicate bundle `dev.vipi.ios` after the canonical installation succeeds.
 8. Launches `com.abovetech.vipi.choijuwon` and verifies that exactly one canonical Vipi app remains.
+9. Checks the Mac Studio host health and requires a connected mobile client plus live sessions/runtimes, catching lost pairing or an empty session list.
 
 Constants:
 
@@ -34,4 +35,4 @@ Constants:
 
 Never infer that the device is unavailable only because the Mac Studio has none connected. Conversely, do not always force MacBook deployment: the owner may connect the iPhone to the Mac Studio at home.
 
-Only report completion when build, canonical bundle verification, install/update, duplicate removal, launch, and final installed-app verification all succeed.
+Only report completion when build, canonical bundle verification, install/update, duplicate removal, launch, final installed-app verification, and live host/session connectivity all succeed.

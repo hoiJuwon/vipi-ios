@@ -146,8 +146,23 @@ while [ "$attempt" -lt 180 ]; do
   fi
   if [ -n "$result" ]; then
     if [ "$result" = "success" ]; then
-      echo "Vipi updated, duplicate-free, and launched on physical iPhone ($DEVICE via $TARGET)."
-      exit 0
+      connection_attempt=0
+      while [ "$connection_attempt" -lt 30 ]; do
+        health=$(curl -fsS http://127.0.0.1:8765/health 2>/dev/null || true)
+        if [ -n "$health" ] && printf '%s' "$health" | python3 -c '
+import json, sys
+value = json.load(sys.stdin)
+raise SystemExit(0 if value.get("mobileClients", 0) > 0 and value.get("sessions", 0) > 0 and value.get("runtimes", 0) > 0 else 1)
+' 2>/dev/null; then
+          echo "Vipi updated, duplicate-free, launched, and connected to live sessions on physical iPhone ($DEVICE via $TARGET)."
+          exit 0
+        fi
+        connection_attempt=$((connection_attempt + 1))
+        sleep 2
+      done
+      echo "App installed and launched, but it did not connect to the Vipi host/session runtimes" >&2
+      echo "Last host health: ${health:-unavailable}" >&2
+      exit 1
     fi
     echo "Physical iPhone deployment failed: $result" >&2
     if [ -n "$run_host" ]; then ssh -o BatchMode=yes "$run_host" "tail -120 '$LOG' 2>/dev/null || true" >&2
