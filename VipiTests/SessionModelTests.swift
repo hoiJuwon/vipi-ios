@@ -53,12 +53,16 @@ final class SessionModelTests: XCTestCase {
 
         try await store.handle(envelope(#"{"kind":"tool","toolCallID":"edit-1","name":"edit","state":"running","summary":"edit running","detail":"file.swift"}"#))
         try await store.handle(envelope(#"{"kind":"tool","toolCallID":"edit-1","name":"edit","state":"succeeded","summary":"edit completed","detail":"file.swift"}"#))
-        try await store.handle(envelope(#"{"kind":"message","messageID":"answer","role":"assistant","text":"완료했습니다.","timestamp":"2026-08-24T00:00:00Z","streaming":true}"#))
+        try await store.handle(envelope(#"{"kind":"message","messageID":"tool-phase-2","role":"assistant","text":"","timestamp":"2026-08-24T00:00:01Z","streaming":true}"#))
+        try await store.handle(envelope(#"{"kind":"tool","toolCallID":"bash-1","name":"bash","state":"succeeded","summary":"bash completed","detail":"npm test"}"#))
+        try await store.handle(envelope(#"{"kind":"message","messageID":"tool-phase-3","role":"assistant","text":"","timestamp":"2026-08-24T00:00:02Z","streaming":true}"#))
+        try await store.handle(envelope(#"{"kind":"tool","toolCallID":"bash-2","name":"bash","state":"succeeded","summary":"bash completed","detail":"git status"}"#))
+        try await store.handle(envelope(#"{"kind":"message","messageID":"answer","role":"assistant","text":"완료했습니다.","timestamp":"2026-08-24T00:00:03Z","streaming":true}"#))
 
         XCTAssertEqual(store.messages(for: "tools").count, 1)
         XCTAssertEqual(store.messages(for: "tools").first?.id, "answer")
-        XCTAssertEqual(store.messages(for: "tools").first?.tools.map(\.name), ["edit"])
-        XCTAssertEqual(store.messages(for: "tools").first?.tools.first?.state, .succeeded)
+        XCTAssertEqual(store.messages(for: "tools").first?.tools.map(\.name), ["edit", "bash", "bash"])
+        XCTAssertTrue(store.messages(for: "tools").first?.tools.allSatisfy { $0.state == .succeeded } == true)
     }
 
     @MainActor func testProductionConnectRejectsInsecureHostBeforeBroker() async {

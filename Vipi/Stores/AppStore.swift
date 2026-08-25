@@ -289,6 +289,9 @@ final class AppStore {
                 updated.tools = messages[index].tools
                 messages[index] = updated
             } else { messages.append(message) }
+            if message.role == .assistant && !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                consolidateCurrentTurnTools(into: message.id, messages: &messages)
+            }
             messagesBySession[sessionID] = messages
             if let timestamp = event.timestamp {
                 lastMessageAtBySession[sessionID] = max(lastMessageAtBySession[sessionID] ?? .distantPast, timestamp)
@@ -323,6 +326,31 @@ final class AppStore {
             messagesBySession[sessionID] = messages
         }
         if let entryID = event.entryID { lastEntryBySession[sessionID] = entryID }
+    }
+
+    private func consolidateCurrentTurnTools(into messageID: String, messages: inout [ChatMessage]) {
+        guard let targetIndex = messages.firstIndex(where: { $0.id == messageID }) else { return }
+        let previousUserIndex = messages[..<targetIndex].lastIndex(where: { $0.role == .user })
+        let turnStart = previousUserIndex.map { messages.index(after: $0) } ?? messages.startIndex
+        guard turnStart <= targetIndex else { return }
+
+        let turnMessageIDs = Set(messages[turnStart...targetIndex].map(\.id))
+        var tools: [ToolActivity] = []
+        for index in turnStart...targetIndex {
+            for tool in messages[index].tools {
+                if let existing = tools.firstIndex(where: { $0.id == tool.id }) {
+                    tools[existing] = tool
+                } else {
+                    tools.append(tool)
+                }
+            }
+            messages[index].tools.removeAll()
+        }
+        messages[targetIndex].tools = tools
+        messages.removeAll { message in
+            turnMessageIDs.contains(message.id) && message.id != messageID && message.role == .assistant &&
+            message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && message.tools.isEmpty
+        }
     }
 
     private func decode<Value: Decodable>(_ payload: JSONValue) -> Value? {

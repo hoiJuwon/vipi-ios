@@ -45,15 +45,15 @@ final class VipiUITests: XCTestCase {
         XCTAssertTrue(session.waitForExistence(timeout: 10))
         session.tap()
         XCTAssertTrue(app.staticTexts["History restored"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.buttons["chat.previousPiMessage"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["chat.latestPiMessage"].exists)
+        XCTAssertTrue(app.buttons["chat.previousAssistantMessage"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["chat.nextAssistantMessage"].exists)
 
         let composer = app.textFields["chat.composer"]
         composer.tap()
         composer.typeText("Live prompt")
         app.buttons["chat.send"].tap()
         XCTAssertTrue(app.staticTexts["Streaming complete"].waitForExistence(timeout: 10))
-        let toolHistory = app.buttons["도구 사용내역"]
+        let toolHistory = app.buttons["작업 기록"]
         XCTAssertTrue(toolHistory.waitForExistence(timeout: 5))
         toolHistory.tap()
         XCTAssertTrue(app.staticTexts["read"].waitForExistence(timeout: 5))
@@ -64,7 +64,7 @@ final class VipiUITests: XCTestCase {
         XCTAssertTrue(composer.isHittable)
         Thread.sleep(forTimeInterval: 1)
         XCTAssertEqual(app.staticTexts.matching(NSPredicate(format: "label == %@", "Streaming complete")).count, 1)
-        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label == %@", "도구 사용내역")).count, 1)
+        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label == %@", "작업 기록")).count, 1)
         app.buttons["chat.menu"].tap()
         let abort = app.buttons["chat.abort"]
         XCTAssertTrue(abort.waitForExistence(timeout: 3))
@@ -88,10 +88,24 @@ final class VipiUITests: XCTestCase {
         let send = app.buttons["chat.send"]
         XCTAssertEqual(send.label, "Send message")
         XCTAssertFalse(send.isEnabled)
-        let toolHistory = app.buttons["도구 사용내역"]
+
+        let previousMessage = app.buttons["chat.previousAssistantMessage"]
+        let nextMessage = app.buttons["chat.nextAssistantMessage"]
+        previousMessage.tap()
+        let previousText = app.staticTexts["assistant.message.m2"]
+        XCTAssertTrue(previousText.waitForExistence(timeout: 5))
+        let visibleTranscriptTop = max(transcript.frame.minY, app.navigationBars.firstMatch.frame.maxY)
+        XCTAssertLessThan(abs(previousText.frame.minY - visibleTranscriptTop), 35)
+        nextMessage.tap()
+        let nextText = app.staticTexts["assistant.message.m4"]
+        XCTAssertTrue(nextText.waitForExistence(timeout: 5))
+        XCTAssertLessThan(abs(nextText.frame.minY - visibleTranscriptTop), 35)
+
+        let toolHistory = app.buttons.matching(
+            NSPredicate(format: "label == %@ AND value CONTAINS %@", "작업 기록", "2개")
+        ).firstMatch
         for _ in 0..<8 where !toolHistory.exists { transcript.swipeUp() }
         XCTAssertTrue(toolHistory.waitForExistence(timeout: 5))
-        XCTAssertTrue((toolHistory.value as? String)?.contains("2개") == true)
         XCTAssertTrue(app.buttons["chat.menu"].isHittable)
     }
 

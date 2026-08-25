@@ -104,6 +104,9 @@ struct ChatView: View {
                                 MessageView(message: message).id(message.id)
                             }
                             Color.clear.frame(height: 4).id("bottom")
+                            Color.clear
+                                .frame(height: UIScreen.main.bounds.height * 0.62)
+                                .accessibilityHidden(true)
                         }
                         .padding(.horizontal, 16)
                         .padding(.vertical, 18)
@@ -125,7 +128,7 @@ struct ChatView: View {
                     if !assistantMessageIDs.isEmpty {
                         MessageNavigationControls(
                             goUp: { focusPreviousAssistant(using: proxy) },
-                            goDown: { focusLatestAssistant(using: proxy) }
+                            goDown: { focusNextAssistant(using: proxy) }
                         )
                         .padding(.trailing, 12)
                         .padding(.bottom, 10)
@@ -140,7 +143,13 @@ struct ChatView: View {
     }
 
     private var assistantMessageIDs: [String] {
-        store.messages(for: sessionID).filter { $0.role == .assistant }.map(\.id)
+        store.messages(for: sessionID)
+            .filter { $0.role == .assistant && !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .map(\.id)
+    }
+
+    private func assistantTextAnchor(_ messageID: String) -> String {
+        "assistant-text-\(messageID)"
     }
 
     private var latestTranscriptRevision: String {
@@ -155,13 +164,16 @@ struct ChatView: View {
         let currentIndex = focusedAssistantID.flatMap { ids.firstIndex(of: $0) } ?? ids.count - 1
         let targetIndex = max(0, currentIndex - 1)
         focusedAssistantID = ids[targetIndex]
-        withAnimation(.snappy) { proxy.scrollTo(ids[targetIndex], anchor: .top) }
+        withAnimation(.snappy) { proxy.scrollTo(assistantTextAnchor(ids[targetIndex]), anchor: .top) }
     }
 
-    private func focusLatestAssistant(using proxy: ScrollViewProxy) {
-        guard let latest = assistantMessageIDs.last else { return }
-        focusedAssistantID = latest
-        withAnimation(.snappy) { proxy.scrollTo(latest, anchor: .top) }
+    private func focusNextAssistant(using proxy: ScrollViewProxy) {
+        let ids = assistantMessageIDs
+        guard !ids.isEmpty else { return }
+        let currentIndex = focusedAssistantID.flatMap { ids.firstIndex(of: $0) } ?? 0
+        let targetIndex = min(ids.count - 1, currentIndex + 1)
+        focusedAssistantID = ids[targetIndex]
+        withAnimation(.snappy) { proxy.scrollTo(assistantTextAnchor(ids[targetIndex]), anchor: .top) }
     }
 }
 
@@ -191,15 +203,15 @@ private struct MessageNavigationControls: View {
                 Image(systemName: "chevron.up")
                     .frame(width: 38, height: 34)
             }
-            .accessibilityIdentifier("chat.previousPiMessage")
-            .accessibilityLabel("이전 Pi 메시지")
+            .accessibilityIdentifier("chat.previousAssistantMessage")
+            .accessibilityLabel("이전 어시스턴트 메시지")
             Divider().overlay(VipiTheme.stroke).padding(.horizontal, 8)
             Button(action: goDown) {
                 Image(systemName: "chevron.down")
                     .frame(width: 38, height: 34)
             }
-            .accessibilityIdentifier("chat.latestPiMessage")
-            .accessibilityLabel("최신 Pi 메시지")
+            .accessibilityIdentifier("chat.nextAssistantMessage")
+            .accessibilityLabel("다음 어시스턴트 메시지")
         }
         .font(.subheadline.bold())
         .foregroundStyle(VipiTheme.primary)
@@ -252,78 +264,50 @@ private struct MessageView: View {
                 .vipiGlass(tint: VipiTheme.accent, in: RoundedRectangle(cornerRadius: 18, style: .continuous)) }
         } else {
             VStack(alignment: .leading, spacing: 12) {
-                if shouldShowToolHistory {
-                    ToolHistoryDisclosure(tools: message.tools)
-                } else {
-                    ForEach(message.tools) { tool in
-                        ToolDisclosure(tool: tool)
+                if !message.tools.isEmpty {
+                    if message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        WorkLog(tools: message.tools)
+                    } else {
+                        WorkHistoryDisclosure(tools: message.tools)
                     }
                 }
 
-                if message.isStreaming && message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Text("Thinking...")
-                        .font(.body.italic())
-                        .foregroundStyle(VipiTheme.secondary)
-                        .accessibilityLabel("Thinking")
-                } else if !message.text.isEmpty {
+                if !message.text.isEmpty {
                     Text(.init(message.text))
                         .font(.body)
                         .foregroundStyle(VipiTheme.primary)
                         .textSelection(.enabled)
+                        .accessibilityIdentifier("assistant.message.\(message.id)")
+                        .id("assistant-text-\(message.id)")
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
-
-    private var shouldShowToolHistory: Bool {
-        !message.tools.isEmpty &&
-        !message.tools.contains(where: { $0.state == .running }) &&
-        !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
 }
 
-private struct ToolDisclosure: View {
-    let tool: ToolActivity
-    @State private var expanded: Bool
-
-    init(tool: ToolActivity) {
-        self.tool = tool
-        _expanded = State(initialValue: tool.state == .running)
-    }
+private struct WorkLog: View {
+    let tools: [ToolActivity]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Button { withAnimation(.snappy) { expanded.toggle() } } label: {
-                HStack(spacing: 5) {
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(tools) { tool in
+                VStack(alignment: .leading, spacing: 5) {
                     Text(tool.name)
-                        .italic()
+                        .font(.subheadline.italic())
                         .underline()
-                    Image(systemName: expanded ? "chevron.up" : "chevron.down")
-                        .font(.caption2)
+                        .foregroundStyle(tool.state == .failed ? VipiTheme.danger : VipiTheme.secondary)
+                    Text(tool.detail ?? tool.summary)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(VipiTheme.secondary)
+                        .textSelection(.enabled)
                 }
-                .font(.subheadline)
-                .foregroundStyle(tool.state == .failed ? VipiTheme.danger : VipiTheme.secondary)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Tool \(tool.name)")
-            .accessibilityValue("\(tool.state.rawValue), \(tool.summary)")
-            .accessibilityHint(expanded ? "Collapses tool details" : "Expands tool details")
-
-            if expanded {
-                Text(tool.detail ?? tool.summary)
-                    .font(.caption.monospaced())
-                    .foregroundStyle(VipiTheme.secondary)
-                    .textSelection(.enabled)
-            }
-        }
-        .onChange(of: tool.state) { _, state in
-            withAnimation(.snappy) { expanded = state == .running }
         }
     }
 }
 
-private struct ToolHistoryDisclosure: View {
+private struct WorkHistoryDisclosure: View {
     let tools: [ToolActivity]
     @State private var expanded = false
 
@@ -331,7 +315,7 @@ private struct ToolHistoryDisclosure: View {
         VStack(alignment: .leading, spacing: 9) {
             Button { withAnimation(.snappy) { expanded.toggle() } } label: {
                 HStack(spacing: 5) {
-                    Text("도구 사용내역")
+                    Text("작업 기록")
                         .underline()
                     Image(systemName: expanded ? "chevron.up" : "chevron.down")
                         .font(.caption2)
@@ -340,25 +324,12 @@ private struct ToolHistoryDisclosure: View {
                 .foregroundStyle(VipiTheme.secondary)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("도구 사용내역")
+            .accessibilityLabel("작업 기록")
             .accessibilityValue("\(tools.count)개 도구")
 
             if expanded {
-                VStack(alignment: .leading, spacing: 12) {
-                    ForEach(tools) { tool in
-                        VStack(alignment: .leading, spacing: 5) {
-                            Text(tool.name)
-                                .font(.subheadline.italic())
-                                .underline()
-                                .foregroundStyle(tool.state == .failed ? VipiTheme.danger : VipiTheme.secondary)
-                            Text(tool.detail ?? tool.summary)
-                                .font(.caption.monospaced())
-                                .foregroundStyle(VipiTheme.secondary)
-                                .textSelection(.enabled)
-                        }
-                    }
-                }
-                .padding(.leading, 10)
+                WorkLog(tools: tools)
+                    .padding(.leading, 10)
             }
         }
     }
