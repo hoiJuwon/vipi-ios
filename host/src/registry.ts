@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { normalizeHistory } from "./normalization.js";
 import type { SessionRecord } from "./protocol.js";
@@ -13,6 +13,7 @@ type RawEntry = {
 
 type PreviewSnapshot = { fingerprint: string; preview?: string; timestamp?: string };
 const previews = new Map<string, PreviewSnapshot>();
+const registryPath = join(agentDir, "tmux-session-tree.json");
 
 function recentMessageSnapshot(sessionFile: string | undefined): Omit<PreviewSnapshot, "fingerprint"> {
   if (!sessionFile) return {};
@@ -40,7 +41,7 @@ function recentMessageSnapshot(sessionFile: string | undefined): Omit<PreviewSna
 /** The session tree registry is the canonical mobile visibility boundary. */
 export function readTmuxRegistry(): SessionRecord[] {
   try {
-    const body = JSON.parse(readFileSync(join(agentDir, "tmux-session-tree.json"), "utf8")) as { entries?: RawEntry[] };
+    const body = JSON.parse(readFileSync(registryPath, "utf8")) as { entries?: RawEntry[] };
     return (body.entries ?? []).flatMap((entry): SessionRecord[] => {
       if (!entry.piSessionId || !entry.cwd || !entry.sessionFile || !existsSync(entry.sessionFile)) return [];
       const recent = recentMessageSnapshot(entry.sessionFile);
@@ -64,4 +65,34 @@ export function readTmuxRegistry(): SessionRecord[] {
       }];
     });
   } catch { return []; }
+}
+
+/** Persists the same unread bit consumed and rendered by pi-session-tree. */
+export function setTmuxSessionUnread(sessionID: string, unread: boolean): boolean {
+  try {
+    const body = JSON.parse(readFileSync(registryPath, "utf8")) as { entries?: RawEntry[] };
+    if (!Array.isArray(body.entries)) return false;
+    let found = false;
+    let changed = false;
+    const entries = body.entries.map((entry) => {
+      if (entry.piSessionId !== sessionID) return entry;
+      found = true;
+      if (entry.unread === unread) return entry;
+      changed = true;
+      return { ...entry, unread };
+    });
+    if (!found) return false;
+    if (!changed) return true;
+
+    const temporary = `${registryPath}.vipi-${process.pid}-${Date.now()}`;
+    try {
+      writeFileSync(temporary, JSON.stringify({ ...body, entries }, null, 2), { mode: 0o600 });
+      renameSync(temporary, registryPath);
+    } finally {
+      try { unlinkSync(temporary); } catch {}
+    }
+    return true;
+  } catch {
+    return false;
+  }
 }

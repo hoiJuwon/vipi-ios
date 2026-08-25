@@ -48,6 +48,21 @@ final class SessionModelTests: XCTestCase {
         XCTAssertEqual(MockData.sessions.first(where: { $0.id == "mobile" })?.phase, .working)
     }
 
+    @MainActor func testOpeningSessionOptimisticallyMarksItRead() async {
+        let store = AppStore(startsInDemoMode: true)
+        XCTAssertEqual(store.session(id: "ui")?.unread, true)
+        await store.markRead("ui")
+        XCTAssertEqual(store.session(id: "ui")?.unread, false)
+    }
+
+    @MainActor func testUnreadSnapshotStaysReadWhileChatIsOpen() async throws {
+        let store = AppStore()
+        store.selectedSessionID = "open-session"
+        let data = Data(#"{"type":"sessions.snapshot","payload":{"sessions":[{"id":"open-session","name":"Open","cwd":"/tmp","phase":"completed","unread":true,"lastActivityAt":"2026-08-24T00:00:00Z","model":"Pi","thinkingLevel":"off","contextPercent":0,"tmux":{"session":"base","window":"1","paneID":"%1"}}]}}"#.utf8)
+        await store.handle(try JSONDecoder().decode(ServerEnvelope.self, from: data))
+        XCTAssertEqual(store.session(id: "open-session")?.unread, false)
+    }
+
     @MainActor func testDraftsRemainPerSessionAcrossChatNavigation() {
         let store = AppStore()
         store.setDraft("first draft", for: "session-a")

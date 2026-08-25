@@ -274,7 +274,7 @@ test("uses the session tree as the exact visibility boundary and derives missing
   ].join("\n"));
   writeFileSync(registryPath, JSON.stringify({ entries: [{
     piSessionId: "visible-session", name: "Visible", cwd: "/tmp/visible",
-    status: "idle", tmuxSession: "visible", tmuxWindow: "1", tmuxPaneId: "%new",
+    status: "idle", unread: true, tmuxSession: "visible", tmuxWindow: "1", tmuxPaneId: "%new",
     lastSeen: new Date().toISOString(), sessionFile,
   }] }));
 
@@ -299,6 +299,27 @@ test("uses the session tree as the exact visibility boundary and derives missing
   const visibleSnapshot = await receiveType(mobile, "sessions.snapshot");
   assert.deepEqual(visibleSnapshot.payload.sessions.map((session: { id: string }) => session.id), ["visible-session"]);
   assert.equal(visibleSnapshot.payload.sessions[0].lastMessagePreview, "preview answer");
+  assert.equal(visibleSnapshot.payload.sessions[0].unread, true);
+
+  send(mobile, "session.read", { sessionID: "visible-session" }, "visible-read");
+  const readResponse = await receiveType(mobile, "session.response");
+  assert.equal(readResponse.payload.ok, true);
+  const forwardedRead = await receive(active);
+  assert.equal(forwardedRead.type, "session.read");
+  const mobileReadSnapshot = await receiveType(mobile, "sessions.snapshot");
+  assert.equal(mobileReadSnapshot.payload.sessions[0].unread, false);
+  const persistedRead = JSON.parse(await readFile(registryPath, "utf8"));
+  assert.equal(persistedRead.entries[0].unread, false);
+
+  persistedRead.entries[0].unread = true;
+  writeFileSync(registryPath, JSON.stringify(persistedRead));
+  const treeUnreadSnapshot = await receiveType(mobile, "sessions.snapshot");
+  assert.equal(treeUnreadSnapshot.payload.sessions[0].unread, true);
+  persistedRead.entries[0].unread = false;
+  writeFileSync(registryPath, JSON.stringify(persistedRead));
+  const treeReadSnapshot = await receiveType(mobile, "sessions.snapshot");
+  assert.equal(treeReadSnapshot.payload.sessions[0].unread, false);
+
   send(mobile, "session.prompt", { sessionID: "visible-session", text: "visible prompt", delivery: "prompt" }, "visible-prompt");
   const forwarded = await receive(active);
   assert.equal(forwarded.id, "visible-prompt");
@@ -371,8 +392,10 @@ test("runs the real Pi extension through broker registration, history, controls,
     abort: () => { aborted = true; },
     compact: () => { compacted = true; },
   } as unknown as ExtensionContext;
+  const emitted: Array<{ name: string; payload: unknown }> = [];
   const api = {
     on: (name: string, handler: (event: any, ctx: ExtensionContext) => Promise<void>) => { handlers.set(name, handler); },
+    events: { emit: (name: string, payload: unknown) => emitted.push({ name, payload }) },
     getSessionName: () => "Real / Extension",
     getThinkingLevel: () => "medium",
     sendUserMessage: (text: string, options?: { deliverAs?: string }) => delivered.push({ text, ...(options?.deliverAs ? { delivery: options.deliverAs } : {}) }),
@@ -394,6 +417,13 @@ test("runs the real Pi extension through broker registration, history, controls,
     snapshot = await receiveType(mobile, "sessions.snapshot");
   }
   assert.ok(snapshot.payload.sessions.some((session: { id: string }) => session.id === "real-extension"));
+
+  send(mobile, "session.read", { sessionID: "real-extension" }, "real-read");
+  assert.equal((await receiveType(mobile, "session.response")).payload.ok, true);
+  for (let attempt = 0; attempt < 20 && emitted.length === 0; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.deepEqual(emitted, [{ name: "vipi:session-read", payload: { sessionID: "real-extension" } }]);
 
   send(mobile, "session.history", { sessionID: "real-extension" }, "real-history");
   const history = await receiveType(mobile, "session.response");

@@ -229,9 +229,15 @@ final class AppStore {
         }
     }
 
-    func markRead(_ sessionID: String) {
+    func markRead(_ sessionID: String) async {
         guard let index = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
         sessions[index].unread = false
+        guard connectionState == .connected else { return }
+        do {
+            _ = try await broker.send(type: "session.read", payload: SessionCommandPayload(sessionID: sessionID))
+        } catch {
+            commandError = "Read state could not be synchronized: \(error.localizedDescription)"
+        }
     }
 
     private func requestHistory(for sessionID: String, direction: HistoryDirection) async {
@@ -381,6 +387,10 @@ final class AppStore {
                     var updated = session
                     updated.lastActivityAt = lastMessageAt
                     return updated
+                }
+                if let selectedSessionID,
+                   sessions.first(where: { $0.id == selectedSessionID })?.unread == true {
+                    await markRead(selectedSessionID)
                 }
                 let workingSessionIDs = Set(sessions.filter { $0.phase == .working }.map(\.id))
                 progressBySession = progressBySession.filter { workingSessionIDs.contains($0.key) }

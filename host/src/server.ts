@@ -3,7 +3,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import qrcode from "qrcode-terminal";
 import { envelope, PROTOCOL_VERSION, type Envelope, type SessionRecord } from "./protocol.js";
 import { loadOrCreateToken, rotateToken, tokenMatches, tokenPath } from "./token.js";
-import { readTmuxRegistry } from "./registry.js";
+import { readTmuxRegistry, setTmuxSessionUnread } from "./registry.js";
 import { createPairingPayload } from "./pairing.js";
 import { mobileActivityForTool, normalizeHistory } from "./normalization.js";
 import { readSessionBranch } from "./session-history.js";
@@ -141,6 +141,21 @@ wss.on("connection", (socket) => {
       for (const client of mobileClients) if (client !== socket) client.close(4001, "token rotated");
       return;
     }
+    if (message.type === "session.read") {
+      const sessionID = message.payload?.sessionID;
+      const ok = typeof sessionID === "string" && setTmuxSessionUnread(sessionID, false);
+      socket.send(JSON.stringify(envelope("session.response", {
+        requestID: message.id,
+        ok,
+        ...(!ok ? { result: { error: "session is not visible in the session tree" } } : {}),
+      }, message.id, ++sequence)));
+      if (ok && typeof sessionID === "string") {
+        const runtime = currentRuntime(sessionID);
+        if (runtime?.readyState === WebSocket.OPEN) runtime.send(JSON.stringify(message));
+        broadcast("sessions.snapshot", { sessions: mergedSessions() });
+      }
+      return;
+    }
     if (!new Set(["session.prompt", "session.abort", "session.compact", "session.history"]).has(message.type)) {
       socket.send(JSON.stringify(envelope("error", { code: "UNSUPPORTED_COMMAND" }, message.id, ++sequence)));
       return;
@@ -213,7 +228,6 @@ function mergedSessions(): SessionRecord[] {
     return {
       ...treeSession,
       phase: live.phase,
-      unread: live.unread,
       lastActivityAt: live.lastActivityAt,
       lastMessagePreview: live.lastMessagePreview ?? treeSession.lastMessagePreview,
       model: live.model,
@@ -234,7 +248,7 @@ setInterval(() => {
   if (next === lastTreeFingerprint) return;
   lastTreeFingerprint = next;
   broadcast("sessions.snapshot", { sessions: mergedSessions() });
-}, 1_000).unref();
+}, 250).unref();
 
 function relayRuntimeEvent(payload: Record<string, unknown>): void {
   const sessionID = typeof payload.sessionID === "string" ? payload.sessionID : undefined;

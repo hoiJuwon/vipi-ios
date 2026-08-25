@@ -37,6 +37,7 @@ async function produceSettledTurn(): Promise<void> {
 
 const api = {
   on: (name: string, handler: (event: any, ctx: ExtensionContext) => Promise<void>) => { handlers.set(name, handler); },
+  events: { emit: () => {} },
   getSessionName: () => "E2E / Live session",
   getThinkingLevel: () => "medium",
   sendUserMessage: () => { setTimeout(() => void produceSettledTurn(), 10); },

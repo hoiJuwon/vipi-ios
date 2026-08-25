@@ -113,6 +113,14 @@ export default function vipiBridge(pi: ExtensionAPI) {
     const ctx = runtime.ctx; if (!ctx) return;
     const reply = (ok: boolean, result?: unknown) => send("runtime.response", { requestID: message.id, ok, result });
     try {
+      if (message.type === "session.read") {
+        const sessionID = String(message.payload?.sessionID ?? "");
+        if (sessionID !== ctx.sessionManager.getSessionId()) throw new Error("session mismatch");
+        runtime.unread = false;
+        pi.events.emit("vipi:session-read", { sessionID });
+        send("runtime.session", { session: sessionSnapshot(ctx) });
+        return;
+      }
       if (message.type === "session.prompt") {
         const text = String(message.payload?.text ?? "");
         const delivery = message.payload?.delivery as "steer" | "followUp" | "prompt";

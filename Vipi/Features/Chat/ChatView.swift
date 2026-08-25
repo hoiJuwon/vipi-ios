@@ -66,8 +66,14 @@ struct ChatView: View {
         }
         .toolbar(.hidden, for: .tabBar)
         .onAppear {
-            store.markRead(sessionID)
-            Task { await store.ensureHistory(for: sessionID) }
+            store.selectedSessionID = sessionID
+            Task {
+                await store.markRead(sessionID)
+                await store.ensureHistory(for: sessionID)
+            }
+        }
+        .onDisappear {
+            if store.selectedSessionID == sessionID { store.selectedSessionID = nil }
         }
         .alert("Command failed", isPresented: commandErrorPresented) {
             Button("OK") { store.commandError = nil }
