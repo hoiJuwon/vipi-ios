@@ -202,13 +202,39 @@ function currentRuntime(sessionID: string): WebSocket | undefined {
 }
 
 function mergedSessions(): SessionRecord[] {
-  const sessions = new Map(readTmuxRegistry().map((session) => [
-    session.id,
-    currentRuntime(session.id) ? session : { ...session, phase: "offline" as const },
-  ]));
-  for (const [id, session] of liveSessions) sessions.set(id, session);
-  return [...sessions.values()].sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt));
+  const treeSessions = readTmuxRegistry();
+  lastTreeFingerprint = JSON.stringify(treeSessions);
+  const visibleIDs = new Set(treeSessions.map((session) => session.id));
+  for (const id of liveSessions.keys()) if (!visibleIDs.has(id)) liveSessions.delete(id);
+
+  return treeSessions.map((treeSession): SessionRecord => {
+    const live = currentRuntime(treeSession.id) ? liveSessions.get(treeSession.id) : undefined;
+    if (!live) return { ...treeSession, phase: "offline" };
+    return {
+      ...treeSession,
+      phase: live.phase,
+      unread: live.unread,
+      lastActivityAt: live.lastActivityAt,
+      lastMessagePreview: live.lastMessagePreview ?? treeSession.lastMessagePreview,
+      model: live.model,
+      thinkingLevel: live.thinkingLevel,
+      branch: live.branch,
+      contextPercent: live.contextPercent,
+    };
+  }).sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt));
 }
+
+function treeFingerprint(): string {
+  return JSON.stringify(readTmuxRegistry());
+}
+
+let lastTreeFingerprint = treeFingerprint();
+setInterval(() => {
+  const next = treeFingerprint();
+  if (next === lastTreeFingerprint) return;
+  lastTreeFingerprint = next;
+  broadcast("sessions.snapshot", { sessions: mergedSessions() });
+}, 1_000).unref();
 
 function relayRuntimeEvent(payload: Record<string, unknown>): void {
   const sessionID = typeof payload.sessionID === "string" ? payload.sessionID : undefined;

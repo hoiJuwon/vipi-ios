@@ -264,12 +264,18 @@ test("routes prompt modes, abort, history, responses, and tool events", async ()
   runtime.close();
 });
 
-test("routes mobile commands only to the tmux pane currently in the registry", async () => {
+test("uses the session tree as the exact visibility boundary and derives missing previews", async () => {
   const registryPath = join(directory, "tmux-session-tree.json");
+  const sessionFile = join(directory, "visible-session.jsonl");
+  writeFileSync(sessionFile, [
+    JSON.stringify({ type: "session", version: 3 }),
+    JSON.stringify({ id: "visible-user", parentId: null, type: "message", message: { role: "user", content: "preview request", timestamp: 1 } }),
+    JSON.stringify({ id: "visible-answer", parentId: "visible-user", type: "message", message: { role: "assistant", content: "preview answer", timestamp: 2 } }),
+  ].join("\n"));
   writeFileSync(registryPath, JSON.stringify({ entries: [{
     piSessionId: "visible-session", name: "Visible", cwd: "/tmp/visible",
     status: "idle", tmuxSession: "visible", tmuxWindow: "1", tmuxPaneId: "%new",
-    lastSeen: new Date().toISOString(),
+    lastSeen: new Date().toISOString(), sessionFile,
   }] }));
 
   const stale = await connect();
@@ -290,15 +296,19 @@ test("routes mobile commands only to the tmux pane currently in the registry", a
   const mobile = await connect();
   send(mobile, "auth.authenticate", { token }, "visible-auth");
   await receiveType(mobile, "auth.ok");
-  await receiveType(mobile, "sessions.snapshot");
+  const visibleSnapshot = await receiveType(mobile, "sessions.snapshot");
+  assert.deepEqual(visibleSnapshot.payload.sessions.map((session: { id: string }) => session.id), ["visible-session"]);
+  assert.equal(visibleSnapshot.payload.sessions[0].lastMessagePreview, "preview answer");
   send(mobile, "session.prompt", { sessionID: "visible-session", text: "visible prompt", delivery: "prompt" }, "visible-prompt");
   const forwarded = await receive(active);
   assert.equal(forwarded.id, "visible-prompt");
   assert.equal(forwarded.payload.text, "visible prompt");
 
+  await rm(registryPath, { force: true });
+  const deletedSnapshot = await receiveType(mobile, "sessions.snapshot");
+  assert.deepEqual(deletedSnapshot.payload.sessions, []);
   mobile.close();
   active.close();
-  await rm(registryPath, { force: true });
 });
 
 test("allows sustained lightweight progress events above the mobile command rate", async () => {
@@ -347,12 +357,14 @@ test("runs the real Pi extension through broker registration, history, controls,
     { id: "real-1", parentId: null, timestamp: "2026-08-24T00:00:00Z", type: "message", message: { role: "user", content: "real history", timestamp: 1 } },
     { id: "real-2", parentId: "real-1", timestamp: "2026-08-24T00:00:01Z", type: "message", message: { role: "toolResult", toolCallId: "real-tool", toolName: "read", content: [{ type: "text", text: "result" }], isError: false, timestamp: 2 } },
   ];
+  const realSessionFile = join(directory, "real-extension.jsonl");
+  writeFileSync(realSessionFile, branch.map((entry) => JSON.stringify(entry)).join("\n"));
   const context = {
     cwd: "/tmp/real-extension",
     model: { id: "fixture-model", name: "Fixture Model" },
     sessionManager: {
       getSessionId: () => "real-extension",
-      getSessionFile: () => "/tmp/real-extension.jsonl",
+      getSessionFile: () => realSessionFile,
       getBranch: () => branch,
     },
     getContextUsage: () => ({ percent: 25 }),
@@ -365,6 +377,11 @@ test("runs the real Pi extension through broker registration, history, controls,
     getThinkingLevel: () => "medium",
     sendUserMessage: (text: string, options?: { deliverAs?: string }) => delivered.push({ text, ...(options?.deliverAs ? { delivery: options.deliverAs } : {}) }),
   } as unknown as ExtensionAPI;
+  writeFileSync(join(directory, "tmux-session-tree.json"), JSON.stringify({ entries: [{
+    piSessionId: "real-extension", name: "Real / Extension", cwd: context.cwd,
+    status: "idle", tmuxSession: "fixture", tmuxWindow: "1", tmuxPaneId: process.env.TMUX_PANE ?? "",
+    lastSeen: new Date().toISOString(), sessionFile: context.sessionManager.getSessionFile(),
+  }] }));
   const extension = (await import("../../extension/index.js")).default;
   extension(api);
   await handlers.get("session_start")?.({ type: "session_start", reason: "startup" }, context);
@@ -372,7 +389,10 @@ test("runs the real Pi extension through broker registration, history, controls,
   const mobile = await connect();
   send(mobile, "auth.authenticate", { token }, "real-auth");
   await receiveType(mobile, "auth.ok");
-  const snapshot = await receiveType(mobile, "sessions.snapshot");
+  let snapshot = await receiveType(mobile, "sessions.snapshot");
+  while (snapshot.payload.sessions.find((session: { id: string }) => session.id === "real-extension")?.phase === "offline") {
+    snapshot = await receiveType(mobile, "sessions.snapshot");
+  }
   assert.ok(snapshot.payload.sessions.some((session: { id: string }) => session.id === "real-extension"));
 
   send(mobile, "session.history", { sessionID: "real-extension" }, "real-history");

@@ -14,7 +14,7 @@ const context = {
   model: { id: "fixture", name: "Fixture" },
   sessionManager: {
     getSessionId: () => "e2e",
-    getSessionFile: () => "/tmp/vipi-e2e.jsonl",
+    getSessionFile: () => process.env.VIPI_FIXTURE_SESSION_FILE ?? "/tmp/vipi-e2e.jsonl",
     getBranch: () => branch,
   },
   getContextUsage: () => ({ percent: 12 }),
