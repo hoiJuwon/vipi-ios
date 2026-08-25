@@ -9,6 +9,7 @@ struct ChatView: View {
     @State private var userHasScrolledTranscript = false
     @State private var isFollowingLatest = true
     @State private var isNavigatingHistory = false
+    @State private var pinsSubmittedTurn = false
 
     private var session: RemoteSession? { store.session(id: sessionID) }
     private var isWorking: Bool { session?.phase == .working }
@@ -35,7 +36,15 @@ struct ChatView: View {
                 let text = store.draft(for: sessionID).trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !text.isEmpty else { return }
                 store.setDraft("", for: sessionID)
-                Task { await store.send(text: text, to: sessionID, delivery: mode) }
+                if mode == .prompt {
+                    pinsSubmittedTurn = true
+                    isFollowingLatest = true
+                    userHasScrolledTranscript = false
+                }
+                Task {
+                    let sent = await store.send(text: text, to: sessionID, delivery: mode)
+                    if !sent, mode == .prompt { pinsSubmittedTurn = false }
+                }
             } onStop: {
                 Task { await store.abort(sessionID: sessionID) }
             }
@@ -134,6 +143,11 @@ struct ChatView: View {
                                 )
                                 .id("working-status")
                             }
+                            if isWorking || pinsSubmittedTurn {
+                                Color.clear
+                                    .containerRelativeFrame(.vertical) { length, _ in max(0, length - 72) }
+                                    .accessibilityHidden(true)
+                            }
                         }
                         .padding(.horizontal, 16)
                         .padding(.vertical, 18)
@@ -151,6 +165,13 @@ struct ChatView: View {
                         focusedAssistantID = assistantMessageIDs.last
                         scrollToLatestContent(using: proxy)
                     }
+                    .onChange(of: latestUserMessageID) {
+                        guard isWorking || pinsSubmittedTurn else { return }
+                        scrollToLatestContent(using: proxy)
+                    }
+                    .onChange(of: isWorking) {
+                        if !isWorking { pinsSubmittedTurn = false }
+                    }
 
                     if !assistantMessageIDs.isEmpty || store.canLoadOlderHistory(for: sessionID) {
                         MessageNavigationControls(
@@ -167,6 +188,10 @@ struct ChatView: View {
                 }
             }
         }
+    }
+
+    private var latestUserMessageID: String? {
+        displayMessages.last(where: { $0.role == .user })?.id
     }
 
     private var assistantMessageIDs: [String] {
@@ -225,12 +250,15 @@ struct ChatView: View {
     }
 
     private func scrollToLatestContent(using proxy: ScrollViewProxy) {
-        let target = isWorking ? "working-status" : displayMessages.last.map { rowID(for: $0.id) }
+        let pinsCurrentTurn = isWorking || pinsSubmittedTurn
+        let target = pinsCurrentTurn ? latestUserMessageID.map(rowID(for:)) : displayMessages.last.map { rowID(for: $0.id) }
         guard let target else { return }
         Task { @MainActor in
             await Task.yield()
             try? await Task.sleep(for: .milliseconds(120))
-            proxy.scrollTo(target, anchor: .bottom)
+            withAnimation(.snappy) {
+                proxy.scrollTo(target, anchor: pinsCurrentTurn ? .top : .bottom)
+            }
         }
     }
 }
@@ -545,23 +573,22 @@ private struct WorkingStatusView: View {
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 0.45)) { context in
-            VStack(alignment: .leading, spacing: 5) {
-                HStack(spacing: 8) {
-                    LiquidOrbView()
-                        .frame(width: 52, height: 52)
-                        .frame(width: 34, height: 16)
-                        .clipped()
-                        .shadow(color: VipiTheme.accent.opacity(0.42), radius: 7)
-                    Text(statusText + animatedDots(at: context.date))
-                        .font(.body.weight(.medium))
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 7) {
+                    Text(activity.title + animatedDots(at: context.date))
+                        .font(.body.italic())
                         .foregroundStyle(VipiTheme.primary)
                         .contentTransition(.interpolate)
                         .animation(.easeInOut(duration: 0.2), value: activity)
+                    LiquidOrbView()
+                        .frame(width: 44, height: 44)
+                        .frame(width: 27, height: 13)
+                        .clipped()
+                        .shadow(color: VipiTheme.accent.opacity(0.38), radius: 6)
                 }
                 Text(elapsedText(at: context.date))
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(VipiTheme.secondary)
-                    .padding(.leading, 42)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 3)
@@ -572,23 +599,13 @@ private struct WorkingStatusView: View {
         }
     }
 
-    private var statusText: String {
-        switch activity {
-        case .thinking: "Thinking"
-        case .reading: "Reading context"
-        case .editing: "Making changes"
-        case .running: "Running commands"
-        case .searching: "Searching"
-        }
-    }
-
     private func animatedDots(at date: Date) -> String {
         String(repeating: ".", count: Int(date.timeIntervalSinceReferenceDate / 0.45) % 3 + 1)
     }
 
     private func elapsedText(at date: Date) -> String {
         let seconds = max(0, Int(date.timeIntervalSince(startedAt)))
-        if seconds < 60 { return "\(seconds)초 작업 중" }
-        return "\(seconds / 60)분 \(seconds % 60)초 작업 중"
+        if seconds < 60 { return "\(seconds)s" }
+        return "\(seconds / 60)m \(seconds % 60)s"
     }
 }

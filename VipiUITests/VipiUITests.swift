@@ -37,9 +37,27 @@ final class VipiUITests: XCTestCase {
         XCTAssertEqual(queue.value as? String, "1")
         let progress = app.descendants(matching: .any)["chat.progress"]
         XCTAssertTrue(progress.exists)
-        XCTAssertTrue((progress.value as? String)?.contains("분") == true)
-        XCTAssertTrue((progress.value as? String)?.contains("초") == true)
+        XCTAssertTrue((progress.value as? String)?.contains("m") == true)
+        XCTAssertTrue((progress.value as? String)?.contains("s") == true)
         XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label == %@", "작업 기록")).count, 0)
+    }
+
+    func testSubmittedPromptMovesToTopOfResponseViewport() {
+        let session = app.buttons["session.hello"]
+        XCTAssertTrue(scrollToHittable(session))
+        session.tap()
+
+        let composer = app.textFields["chat.composer"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        composer.tap()
+        composer.typeText("Keep this prompt at the top")
+        app.buttons["chat.send"].tap()
+
+        let submittedPrompt = app.staticTexts["Keep this prompt at the top"]
+        XCTAssertTrue(submittedPrompt.waitForExistence(timeout: 5))
+        Thread.sleep(forTimeInterval: 0.8)
+        XCTAssertLessThan(submittedPrompt.frame.minY, app.navigationBars.firstMatch.frame.maxY + 44)
+        XCTAssertTrue(app.descendants(matching: .any)["chat.progress"].exists)
     }
 
     func testLiveHostPairingHistoryStreamingToolsAndAbort() throws {

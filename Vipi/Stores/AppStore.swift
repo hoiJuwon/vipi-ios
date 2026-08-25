@@ -178,7 +178,8 @@ final class AppStore {
         }
     }
 
-    func send(text: String, to sessionID: String, delivery: PromptDelivery) async {
+    @discardableResult
+    func send(text: String, to sessionID: String, delivery: PromptDelivery) async -> Bool {
         let message = ChatMessage(id: UUID().uuidString, role: .user, text: text, timestamp: .now)
         if connectionState == .demo {
             if delivery == .followUp {
@@ -187,11 +188,11 @@ final class AppStore {
                 messagesBySession[sessionID, default: []].append(message)
                 simulateReply(sessionID: sessionID)
             }
-            return
+            return true
         }
         guard connectionState == .connected else {
             commandError = "The prompt was not sent because the host is disconnected."
-            return
+            return false
         }
         do {
             _ = try await broker.send(type: "session.prompt", payload: PromptPayload(sessionID: sessionID, text: text, delivery: delivery))
@@ -200,8 +201,10 @@ final class AppStore {
             } else {
                 messagesBySession[sessionID, default: []].append(message)
             }
+            return true
         } catch {
             commandError = "Prompt could not be delivered: \(error.localizedDescription)"
+            return false
         }
     }
 
