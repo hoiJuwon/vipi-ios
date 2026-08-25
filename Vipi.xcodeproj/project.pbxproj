@@ -11,6 +11,7 @@
 		0E721E46F558E733E27EC66A /* MockData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C7C821E21D70BBF06358AE6 /* MockData.swift */; };
 		14CAA51CFCBFFE50D7693061 /* ComposerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70423E51C18BD7963D1288E8 /* ComposerView.swift */; };
 		188A110E5F62E54930B428E5 /* ActivityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3FD97EC8475EDE216CB59E0 /* ActivityView.swift */; };
+		1FBB4EB22F4E2F9FA6FACEDF /* LiquidOrb.metal.txt in Resources */ = {isa = PBXBuildFile; fileRef = 1727B75FDA06677C644DE4A3 /* LiquidOrb.metal.txt */; };
 		2BF9CF22338B79464BA39B4B /* ChatModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72FF8640084103979F5F7473 /* ChatModels.swift */; };
 		32AC9AF7F6880204566289A8 /* VipiUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAEF1AF53B3ECC6C955E5219 /* VipiUITests.swift */; };
 		414A19E6F40D0DD5740CEF81 /* VipiApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75B5AAF1B02E8D14B6D7E61F /* VipiApp.swift */; };
@@ -27,6 +28,7 @@
 		DF80DAD8993074D107CA81D9 /* SessionSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEC9C0D7E27AADAE735504FE /* SessionSheets.swift */; };
 		E7E8A8E073144AEA79E07D36 /* BrokerClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A812CC5591D5944635F89BEA /* BrokerClient.swift */; };
 		E80C9737E6A7F103F93A11B4 /* WireProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C2627C2C6A76D4D798CDE4F /* WireProtocol.swift */; };
+		E8330F6EF8C437583D3A9C48 /* LiquidOrbView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3D0CF5106B5573BD7A674E7 /* LiquidOrbView.swift */; };
 		F61E520B85843948B3435E2D /* TailscaleEndpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEBD7F4AC8A326F807D26CC6 /* TailscaleEndpoint.swift */; };
 		FFC67D0B2CBD7B285D0A7A1D /* VipiTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEA45577862E5D8092E1F11A /* VipiTheme.swift */; };
 /* End PBXBuildFile section */
@@ -52,6 +54,7 @@
 		0C3A8EBF742CB0B8AA8B141A /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		0CFDFFA8E9005F6741B77885 /* Vipi.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Vipi.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		111111528337BA9CF7C8ABCA /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		1727B75FDA06677C644DE4A3 /* LiquidOrb.metal.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = LiquidOrb.metal.txt; sourceTree = "<group>"; };
 		1B65F32F13938396FA43217F /* AppStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStore.swift; sourceTree = "<group>"; };
 		257DD7057C41DF8DA0E70B76 /* VipiTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = VipiTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		3A1E79DF96186F6A5F9D412D /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
@@ -74,6 +77,7 @@
 		EAEF1AF53B3ECC6C955E5219 /* VipiUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VipiUITests.swift; sourceTree = "<group>"; };
 		EEBD7F4AC8A326F807D26CC6 /* TailscaleEndpoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TailscaleEndpoint.swift; sourceTree = "<group>"; };
 		EEC9C0D7E27AADAE735504FE /* SessionSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionSheets.swift; sourceTree = "<group>"; };
+		F3D0CF5106B5573BD7A674E7 /* LiquidOrbView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiquidOrbView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -118,6 +122,8 @@
 		4AE8D25370FBB230953E8C74 /* Components */ = {
 			isa = PBXGroup;
 			children = (
+				1727B75FDA06677C644DE4A3 /* LiquidOrb.metal.txt */,
+				F3D0CF5106B5573BD7A674E7 /* LiquidOrbView.swift */,
 				51A56E1D0C45CB92DB1FFCDC /* StatusPill.swift */,
 			);
 			path = Components;
@@ -341,6 +347,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				7B0512649854C073EFE2A1EE /* Assets.xcassets in Resources */,
+				1FBB4EB22F4E2F9FA6FACEDF /* LiquidOrb.metal.txt in Resources */,
 				61A328CB2B99E6BEA303EED9 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -367,6 +374,7 @@
 				A22F88C8554BCE2B0402AA63 /* ChatView.swift in Sources */,
 				14CAA51CFCBFFE50D7693061 /* ComposerView.swift in Sources */,
 				4E82335184F1D08DEB7A7E64 /* KeychainStore.swift in Sources */,
+				E8330F6EF8C437583D3A9C48 /* LiquidOrbView.swift in Sources */,
 				0E721E46F558E733E27EC66A /* MockData.swift in Sources */,
 				084869FCADA6F41FDBA35660 /* RootView.swift in Sources */,
 				88FA779657B240602FA9503C /* SessionListView.swift in Sources */,

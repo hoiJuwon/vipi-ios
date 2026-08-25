@@ -312,7 +312,7 @@ private struct ChatMessageRow: View {
                 Spacer(minLength: 44)
                 Text(message.text)
                     .font(.body)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(VipiTheme.accentForeground)
                     .padding(.horizontal, 15)
                     .padding(.vertical, 11)
                     .vipiGlass(tint: VipiTheme.accent, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -536,49 +536,44 @@ private extension View {
 private struct WorkingStatusView: View {
     let activity: ProgressActivity
     let startedAt: Date
-    @State private var pulse = false
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
-            HStack(spacing: 12) {
-                ZStack {
-                    Circle()
-                        .stroke(VipiTheme.stroke, lineWidth: 1)
-                        .frame(width: 24, height: 24)
-                    Circle()
-                        .fill(VipiTheme.accent)
-                        .frame(width: 7, height: 7)
-                        .scaleEffect(pulse ? 1.0 : 0.55)
-                        .opacity(pulse ? 1 : 0.45)
-                        .shadow(color: VipiTheme.accent.opacity(0.55), radius: 5)
-                }
-                VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 13) {
+                LiquidOrbView()
+                    .frame(width: 58, height: 58)
+                    .overlay {
+                        Circle().stroke(VipiTheme.highlight.opacity(0.55), lineWidth: 0.75)
+                    }
+                    .shadow(color: VipiTheme.accent.opacity(0.22), radius: 12)
+                VStack(alignment: .leading, spacing: 4) {
                     Text("\(activity.title)…")
-                        .font(.subheadline.weight(.medium))
+                        .font(.subheadline.weight(.semibold))
                         .foregroundStyle(VipiTheme.primary)
                     Text(elapsedText(at: context.date))
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(VipiTheme.secondary)
                 }
                 Spacer()
-                Text("●")
-                    .font(.caption2.monospaced())
-                    .foregroundStyle(VipiTheme.accent)
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .padding(.vertical, 10)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(VipiTheme.stroke, lineWidth: 0.75)
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(
+                        LinearGradient(
+                            colors: [VipiTheme.highlight.opacity(0.7), VipiTheme.accent.opacity(0.18)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 0.75
+                    )
             }
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("chat.progress")
             .accessibilityLabel(activity.title)
             .accessibilityValue(elapsedText(at: context.date))
-        }
-        .onAppear {
-            withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) { pulse = true }
         }
     }
 

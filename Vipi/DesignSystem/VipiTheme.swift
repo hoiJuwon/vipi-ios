@@ -17,8 +17,9 @@ enum VipiTheme {
     })
     static let primary = Color.primary
     static let secondary = Color.secondary
-    static let accent = adaptive(light: 0x6557D8, dark: 0x9B8CFF)
-    static let cyan = Color(hex: 0x61D9F0)
+    static let accent = adaptive(light: 0x1677C8, dark: 0x8EEBFF)
+    static let accentForeground = adaptive(light: 0xFFFFFF, dark: 0x06131F)
+    static let cyan = Color(hex: 0x4F9DFF)
     static let success = Color(hex: 0x58D68D)
     static let warning = Color(hex: 0xF7C65F)
     static let danger = Color(hex: 0xFF7272)

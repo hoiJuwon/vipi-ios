@@ -55,7 +55,9 @@ struct ComposerView: View {
                 } label: {
                     Image(systemName: showsStop ? "stop.fill" : "arrow.up")
                         .font(.body.bold())
-                        .foregroundStyle(.white)
+                        .foregroundStyle(
+                            showsStop ? Color.white : trimmedDraft.isEmpty ? VipiTheme.secondary : VipiTheme.accentForeground
+                        )
                         .frame(width: 40, height: 40)
                         .vipiGlass(
                             tint: showsStop ? VipiTheme.danger : trimmedDraft.isEmpty ? VipiTheme.secondary.opacity(0.2) : VipiTheme.accent,
