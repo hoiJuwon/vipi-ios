@@ -252,6 +252,14 @@ private struct MessageView: View {
                 .vipiGlass(tint: VipiTheme.accent, in: RoundedRectangle(cornerRadius: 18, style: .continuous)) }
         } else {
             VStack(alignment: .leading, spacing: 12) {
+                if shouldShowToolHistory {
+                    ToolHistoryDisclosure(tools: message.tools)
+                } else {
+                    ForEach(message.tools) { tool in
+                        ToolDisclosure(tool: tool)
+                    }
+                }
+
                 if message.isStreaming && message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     Text("Thinking...")
                         .font(.body.italic())
@@ -263,39 +271,39 @@ private struct MessageView: View {
                         .foregroundStyle(VipiTheme.primary)
                         .textSelection(.enabled)
                 }
-                ForEach(message.tools) { tool in ToolCard(tool: tool) }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
+
+    private var shouldShowToolHistory: Bool {
+        !message.tools.isEmpty &&
+        !message.tools.contains(where: { $0.state == .running }) &&
+        !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 }
 
-private struct ToolCard: View {
+private struct ToolDisclosure: View {
     let tool: ToolActivity
-    @State private var expanded = false
+    @State private var expanded: Bool
+
+    init(tool: ToolActivity) {
+        self.tool = tool
+        _expanded = State(initialValue: tool.state == .running)
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 7) {
             Button { withAnimation(.snappy) { expanded.toggle() } } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: icon)
-                        .font(.caption)
-                        .foregroundStyle(color)
+                HStack(spacing: 5) {
                     Text(tool.name)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(VipiTheme.primary)
-                    Spacer()
-                    if let changed = tool.changedFiles {
-                        Text("\(changed) files")
-                            .font(.caption2)
-                            .foregroundStyle(VipiTheme.secondary)
-                    }
+                        .italic()
+                        .underline()
                     Image(systemName: expanded ? "chevron.up" : "chevron.down")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(VipiTheme.secondary)
+                        .font(.caption2)
                 }
-                .contentShape(Rectangle())
-                .padding(.vertical, 8)
+                .font(.subheadline)
+                .foregroundStyle(tool.state == .failed ? VipiTheme.danger : VipiTheme.secondary)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Tool \(tool.name)")
@@ -303,22 +311,55 @@ private struct ToolCard: View {
             .accessibilityHint(expanded ? "Collapses tool details" : "Expands tool details")
 
             if expanded {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(tool.summary)
-                    if let detail = tool.detail, detail != tool.summary {
-                        Text(detail)
-                    }
-                }
-                .font(.caption.monospaced())
-                .foregroundStyle(VipiTheme.secondary)
-                .textSelection(.enabled)
-                .padding(.bottom, 10)
+                Text(tool.detail ?? tool.summary)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(VipiTheme.secondary)
+                    .textSelection(.enabled)
             }
-
-            Divider().overlay(VipiTheme.stroke)
+        }
+        .onChange(of: tool.state) { _, state in
+            withAnimation(.snappy) { expanded = state == .running }
         }
     }
+}
 
-    private var icon: String { tool.state == .running ? "gearshape.2.fill" : tool.state == .failed ? "xmark.circle.fill" : "checkmark.circle.fill" }
-    private var color: Color { tool.state == .running ? VipiTheme.accent : tool.state == .failed ? VipiTheme.danger : VipiTheme.success }
+private struct ToolHistoryDisclosure: View {
+    let tools: [ToolActivity]
+    @State private var expanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Button { withAnimation(.snappy) { expanded.toggle() } } label: {
+                HStack(spacing: 5) {
+                    Text("도구 사용내역")
+                        .underline()
+                    Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                        .font(.caption2)
+                }
+                .font(.subheadline)
+                .foregroundStyle(VipiTheme.secondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("도구 사용내역")
+            .accessibilityValue("\(tools.count)개 도구")
+
+            if expanded {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(tools) { tool in
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(tool.name)
+                                .font(.subheadline.italic())
+                                .underline()
+                                .foregroundStyle(tool.state == .failed ? VipiTheme.danger : VipiTheme.secondary)
+                            Text(tool.detail ?? tool.summary)
+                                .font(.caption.monospaced())
+                                .foregroundStyle(VipiTheme.secondary)
+                                .textSelection(.enabled)
+                        }
+                    }
+                }
+                .padding(.leading, 10)
+            }
+        }
+    }
 }

@@ -44,6 +44,23 @@ final class SessionModelTests: XCTestCase {
         XCTAssertEqual(store.messages(for: "wire")[0].tools.first?.state, .succeeded)
     }
 
+    @MainActor func testCompletedToolRunCollapsesIntoFollowingAssistantMessage() async throws {
+        let store = AppStore()
+        func envelope(_ event: String) throws -> ServerEnvelope {
+            let json = #"{"type":"session.event","payload":{"sessionID":"tools","event":\#(event)}}"#
+            return try JSONDecoder().decode(ServerEnvelope.self, from: Data(json.utf8))
+        }
+
+        try await store.handle(envelope(#"{"kind":"tool","toolCallID":"edit-1","name":"edit","state":"running","summary":"edit running","detail":"file.swift"}"#))
+        try await store.handle(envelope(#"{"kind":"tool","toolCallID":"edit-1","name":"edit","state":"succeeded","summary":"edit completed","detail":"file.swift"}"#))
+        try await store.handle(envelope(#"{"kind":"message","messageID":"answer","role":"assistant","text":"완료했습니다.","timestamp":"2026-08-24T00:00:00Z","streaming":true}"#))
+
+        XCTAssertEqual(store.messages(for: "tools").count, 1)
+        XCTAssertEqual(store.messages(for: "tools").first?.id, "answer")
+        XCTAssertEqual(store.messages(for: "tools").first?.tools.map(\.name), ["edit"])
+        XCTAssertEqual(store.messages(for: "tools").first?.tools.first?.state, .succeeded)
+    }
+
     @MainActor func testProductionConnectRejectsInsecureHostBeforeBroker() async {
         let store = AppStore()
         store.host = "http://public.example.com"

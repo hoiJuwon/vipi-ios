@@ -53,10 +53,10 @@ final class VipiUITests: XCTestCase {
         composer.typeText("Live prompt")
         app.buttons["chat.send"].tap()
         XCTAssertTrue(app.staticTexts["Streaming complete"].waitForExistence(timeout: 10))
-        let tool = app.buttons.matching(NSPredicate(format: "label == %@", "Tool read")).firstMatch
-        XCTAssertTrue(tool.waitForExistence(timeout: 5))
-        tool.tap()
-        XCTAssertTrue(app.staticTexts["read completed"].waitForExistence(timeout: 5))
+        let toolHistory = app.buttons["도구 사용내역"]
+        XCTAssertTrue(toolHistory.waitForExistence(timeout: 5))
+        toolHistory.tap()
+        XCTAssertTrue(app.staticTexts["read"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.otherElements.matching(
             NSPredicate(format: "label == %@", "Session status")
         ).firstMatch.exists)
@@ -64,7 +64,7 @@ final class VipiUITests: XCTestCase {
         XCTAssertTrue(composer.isHittable)
         Thread.sleep(forTimeInterval: 1)
         XCTAssertEqual(app.staticTexts.matching(NSPredicate(format: "label == %@", "Streaming complete")).count, 1)
-        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label == %@", "Tool read")).count, 1)
+        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label == %@", "도구 사용내역")).count, 1)
         app.buttons["chat.menu"].tap()
         let abort = app.buttons["chat.abort"]
         XCTAssertTrue(abort.waitForExistence(timeout: 3))
@@ -88,10 +88,10 @@ final class VipiUITests: XCTestCase {
         let send = app.buttons["chat.send"]
         XCTAssertEqual(send.label, "Send message")
         XCTAssertFalse(send.isEnabled)
-        let tool = app.buttons.matching(NSPredicate(format: "label == %@", "Tool read")).firstMatch
-        for _ in 0..<8 where !tool.exists { transcript.swipeUp() }
-        XCTAssertTrue(tool.waitForExistence(timeout: 5))
-        XCTAssertTrue((tool.value as? String)?.contains("succeeded") == true)
+        let toolHistory = app.buttons["도구 사용내역"]
+        for _ in 0..<8 where !toolHistory.exists { transcript.swipeUp() }
+        XCTAssertTrue(toolHistory.waitForExistence(timeout: 5))
+        XCTAssertTrue((toolHistory.value as? String)?.contains("2개") == true)
         XCTAssertTrue(app.buttons["chat.menu"].isHittable)
     }
 

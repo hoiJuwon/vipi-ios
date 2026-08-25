@@ -281,7 +281,10 @@ final class AppStore {
                 $0.role == message.role && $0.text == message.text &&
                 abs($0.timestamp.timeIntervalSince(message.timestamp)) < 5
             })
-            if let index = replacementIndex ?? stableIndex ?? semanticIndex {
+            let toolOnlyMessageIndex = message.role == .assistant && !message.text.isEmpty
+                ? messages.lastIndex(where: { $0.role == .assistant && $0.text.isEmpty && !$0.tools.isEmpty })
+                : nil
+            if let index = replacementIndex ?? stableIndex ?? semanticIndex ?? toolOnlyMessageIndex {
                 var updated = message
                 updated.tools = messages[index].tools
                 messages[index] = updated
