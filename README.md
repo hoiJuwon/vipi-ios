@@ -67,7 +67,7 @@ xcodebuild -project Vipi.xcodeproj \
 
 Production launches with no fabricated sessions. Open Settings to pair a host. Demo data is available only through the explicit **Use demo data** action (and the isolated UI-test launch seam).
 
-For installation on the owner's iPhone, select an Apple ID or Personal Team in **Vipi → Signing & Capabilities**, change `dev.vipi.ios` only if Xcode reports a bundle-ID conflict, select the connected iPhone, and press Run. A distribution certificate, App Store Connect record, archive upload, and TestFlight setup are not required. A free Personal Team may require periodic reinstalling; a paid developer account avoids that limitation.
+The owner's existing physical-device installation uses the canonical bundle ID `com.abovetech.vipi.choijuwon`. Keep this identifier unchanged so deployment upgrades the existing app and preserves its pairing data. Use the repository's `vipi-iphone-deploy` skill/script for installation; App Store Connect, archive upload, and TestFlight are not required.
 
 ## Run the host
 

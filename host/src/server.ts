@@ -33,7 +33,13 @@ const pendingRequests = new Map<string, WebSocket>();
 const server = createServer((request, response) => {
   if (request.url === "/health") {
     response.writeHead(200, { "content-type": "application/json" });
-    response.end(JSON.stringify({ ok: true, protocolVersion: PROTOCOL_VERSION, sessions: mergedSessions().length }));
+    response.end(JSON.stringify({
+      ok: true,
+      protocolVersion: PROTOCOL_VERSION,
+      sessions: mergedSessions().length,
+      mobileClients: mobileClients.size,
+      runtimes: runtimes.size,
+    }));
     return;
   }
   response.writeHead(404).end();

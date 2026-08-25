@@ -28,7 +28,7 @@ A device build therefore requires selecting an Apple ID or Personal Team in Xcod
 ## Minimal personal installation
 
 1. In Xcode **Settings → Accounts**, add the owner's Apple ID if it is not already present.
-2. In **Vipi → Signing & Capabilities**, select the owner's Personal Team. Change `dev.vipi.ios` only if Xcode reports that it is unavailable.
+2. Keep the canonical bundle ID `com.abovetech.vipi.choijuwon` and use the existing Abovetech development team/profile so installation updates the existing app and preserves pairing data.
 3. Connect and trust the owner's iPhone, select it as the run destination, and press **Run**.
 
 No App Store Connect app record, TestFlight group, distribution certificate, archive upload, review submission, compliance questionnaire, screenshots, or public privacy page is needed. A free Personal Team can install the app but may require periodic rebuilding; a paid developer membership provides longer-lived provisioning.

@@ -1,13 +1,13 @@
 name: Vipi
 options:
-  bundleIdPrefix: dev.vipi
+  bundleIdPrefix: com.abovetech.vipi
   deploymentTarget:
     iOS: "18.0"
   xcodeVersion: "26.0"
 settings:
   base:
     SWIFT_VERSION: "6.0"
-    PRODUCT_BUNDLE_IDENTIFIER: dev.vipi.ios
+    PRODUCT_BUNDLE_IDENTIFIER: com.abovetech.vipi.choijuwon
     MARKETING_VERSION: 0.1.0
     CURRENT_PROJECT_VERSION: 1
     CODE_SIGN_STYLE: Automatic

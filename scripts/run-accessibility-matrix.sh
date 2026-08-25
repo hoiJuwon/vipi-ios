@@ -8,7 +8,7 @@ mkdir -p "$OUT"
 set_pref() { xcrun simctl spawn "$UDID" defaults write com.apple.Accessibility "$1" -bool "$2"; }
 run_case() {
   name=$1
-  xcrun simctl launch --terminate-running-process "$UDID" dev.vipi.ios >/dev/null
+  xcrun simctl launch --terminate-running-process "$UDID" com.abovetech.vipi.choijuwon >/dev/null
   sleep 1
   xcrun simctl io "$UDID" screenshot "$OUT/$name.png" >/dev/null
   xcodebuild -project Vipi.xcodeproj -scheme Vipi -destination "$DESTINATION" test-without-building \
