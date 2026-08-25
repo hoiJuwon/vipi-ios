@@ -265,34 +265,48 @@ private struct ToolCard: View {
     @State private var expanded = false
 
     var body: some View {
-        Button { withAnimation(.snappy) { expanded.toggle() } } label: {
-            VStack(alignment: .leading, spacing: 9) {
-                HStack(spacing: 10) {
-                    Image(systemName: icon).foregroundStyle(color)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(tool.name).font(.caption.bold()).foregroundStyle(VipiTheme.primary)
-                        Text(tool.summary).font(.caption).foregroundStyle(VipiTheme.secondary).lineLimit(1)
-                    }
+        VStack(alignment: .leading, spacing: 0) {
+            Button { withAnimation(.snappy) { expanded.toggle() } } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: icon)
+                        .font(.caption)
+                        .foregroundStyle(color)
+                    Text(tool.name)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(VipiTheme.primary)
                     Spacer()
                     if let changed = tool.changedFiles {
-                        Text("\(changed) files").font(.caption2).foregroundStyle(VipiTheme.secondary)
+                        Text("\(changed) files")
+                            .font(.caption2)
+                            .foregroundStyle(VipiTheme.secondary)
                     }
                     Image(systemName: expanded ? "chevron.up" : "chevron.down")
-                        .font(.caption2.bold()).foregroundStyle(VipiTheme.secondary)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(VipiTheme.secondary)
                 }
-                if expanded, let detail = tool.detail {
-                    Divider().overlay(VipiTheme.stroke)
-                    Text(detail).font(.caption.monospaced()).foregroundStyle(VipiTheme.secondary)
-                }
+                .contentShape(Rectangle())
+                .padding(.vertical, 8)
             }
-            .padding(12)
-            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay { RoundedRectangle(cornerRadius: 14).stroke(VipiTheme.stroke, lineWidth: 0.75) }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Tool \(tool.name)")
+            .accessibilityValue("\(tool.state.rawValue), \(tool.summary)")
+            .accessibilityHint(expanded ? "Collapses tool details" : "Expands tool details")
+
+            if expanded {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(tool.summary)
+                    if let detail = tool.detail, detail != tool.summary {
+                        Text(detail)
+                    }
+                }
+                .font(.caption.monospaced())
+                .foregroundStyle(VipiTheme.secondary)
+                .textSelection(.enabled)
+                .padding(.bottom, 10)
+            }
+
+            Divider().overlay(VipiTheme.stroke)
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Tool \(tool.name)")
-        .accessibilityValue("\(tool.state.rawValue), \(tool.summary)")
-        .accessibilityHint(expanded ? "Collapses tool details" : "Expands tool details")
     }
 
     private var icon: String { tool.state == .running ? "gearshape.2.fill" : tool.state == .failed ? "xmark.circle.fill" : "checkmark.circle.fill" }

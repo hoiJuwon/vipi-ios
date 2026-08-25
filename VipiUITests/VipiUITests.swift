@@ -53,6 +53,9 @@ final class VipiUITests: XCTestCase {
         composer.typeText("Live prompt")
         app.buttons["chat.send"].tap()
         XCTAssertTrue(app.staticTexts["Streaming complete"].waitForExistence(timeout: 10))
+        let tool = app.buttons.matching(NSPredicate(format: "label == %@", "Tool read")).firstMatch
+        XCTAssertTrue(tool.waitForExistence(timeout: 5))
+        tool.tap()
         XCTAssertTrue(app.staticTexts["read completed"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.otherElements.matching(
             NSPredicate(format: "label == %@", "Session status")
