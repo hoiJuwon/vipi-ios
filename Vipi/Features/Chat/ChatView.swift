@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct ChatView: View {
     @Environment(AppStore.self) private var store
@@ -31,7 +32,9 @@ struct ChatView: View {
             ComposerView(
                 draft: draftBinding,
                 phase: session?.phase ?? .offline,
-                queuedPrompts: store.queuedPrompts(for: sessionID)
+                queuedPrompts: store.queuedPrompts(for: sessionID),
+                annotations: store.annotations(for: sessionID),
+                onRemoveAnnotation: { store.removeAnnotation($0, from: sessionID) }
             ) { mode in
                 let text = store.draft(for: sessionID).trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !text.isEmpty else { return }
@@ -41,9 +44,14 @@ struct ChatView: View {
                     isFollowingLatest = true
                     userHasScrolledTranscript = false
                 }
+                let annotations = store.annotations(for: sessionID)
                 Task {
-                    let sent = await store.send(text: text, to: sessionID, delivery: mode)
-                    if !sent, mode == .prompt { pinsSubmittedTurn = false }
+                    let sent = await store.send(text: text, annotations: annotations, to: sessionID, delivery: mode)
+                    if sent {
+                        store.clearAnnotations(for: sessionID)
+                    } else if mode == .prompt {
+                        pinsSubmittedTurn = false
+                    }
                 }
             } onStop: {
                 Task { await store.abort(sessionID: sessionID) }
@@ -133,8 +141,10 @@ struct ChatView: View {
                                     }
                             }
                             ForEach(displayMessages) { message in
-                                ChatMessageRow(message: message)
-                                    .id(rowID(for: message.id))
+                                ChatMessageRow(message: message) { excerpt in
+                                    store.addAnnotation(messageID: message.id, text: excerpt, to: sessionID)
+                                }
+                                .id(rowID(for: message.id))
                             }
                             if isWorking {
                                 WorkingStatusView(
@@ -339,6 +349,7 @@ private struct ChatLoadingView: View {
 
 private struct ChatMessageRow: View {
     let message: ChatMessage
+    let onAddToChat: (String) -> Void
 
     var body: some View {
         if message.role == .user {
@@ -352,9 +363,8 @@ private struct ChatMessageRow: View {
                     .vipiGlass(tint: VipiTheme.accent, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
         } else {
-            MarkdownMessageView(source: message.text, messageID: message.id)
+            MarkdownMessageView(source: message.text, messageID: message.id, onAddToChat: onAddToChat)
                 .foregroundStyle(VipiTheme.primary)
-                .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -457,6 +467,7 @@ enum MobileMarkdownParser {
 private struct MarkdownMessageView: View {
     let source: String
     let messageID: String
+    let onAddToChat: (String) -> Void
 
     private var blocks: [MobileMarkdownBlock] { MobileMarkdownParser.parse(source) }
 
@@ -473,37 +484,34 @@ private struct MarkdownMessageView: View {
     private func blockView(_ block: MobileMarkdownBlock, isAnchor: Bool) -> some View {
         switch block {
         case let .heading(level, text):
-            inlineText(text)
-                .font(headingFont(level))
+            inlineText(text, style: .heading(level))
                 .padding(.top, level <= 2 ? 4 : 1)
                 .messageAnchor(isAnchor ? "assistant.message.\(messageID)" : nil)
         case let .paragraph(text):
-            inlineText(text)
-                .font(.body)
-                .lineSpacing(3)
+            inlineText(text, style: .body)
                 .messageAnchor(isAnchor ? "assistant.message.\(messageID)" : nil)
         case let .unorderedItem(marker, text):
-            HStack(alignment: .firstTextBaseline, spacing: 9) {
+            HStack(alignment: .top, spacing: 9) {
                 if marker == "•" {
-                    Text("•").font(.body.weight(.semibold))
+                    Text("•").font(.body.weight(.semibold)).padding(.top, 1)
                 } else {
-                    Image(systemName: marker).font(.caption.weight(.semibold)).foregroundStyle(VipiTheme.accent)
+                    Image(systemName: marker).font(.caption.weight(.semibold)).foregroundStyle(VipiTheme.accent).padding(.top, 3)
                 }
-                inlineText(text).font(.body).lineSpacing(3)
+                inlineText(text, style: .body)
                     .messageAnchor(isAnchor ? "assistant.message.\(messageID)" : nil)
             }
             .padding(.leading, 4)
         case let .orderedItem(number, text):
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(number).font(.body.monospacedDigit()).foregroundStyle(VipiTheme.secondary)
-                inlineText(text).font(.body).lineSpacing(3)
+            HStack(alignment: .top, spacing: 8) {
+                Text(number).font(.body.monospacedDigit()).foregroundStyle(VipiTheme.secondary).padding(.top, 1)
+                inlineText(text, style: .body)
                     .messageAnchor(isAnchor ? "assistant.message.\(messageID)" : nil)
             }
             .padding(.leading, 4)
         case let .quote(text):
             HStack(alignment: .top, spacing: 10) {
                 RoundedRectangle(cornerRadius: 2).fill(VipiTheme.accent.opacity(0.65)).frame(width: 3)
-                inlineText(text).font(.body.italic()).foregroundStyle(VipiTheme.secondary)
+                inlineText(text, style: .quote)
                     .messageAnchor(isAnchor ? "assistant.message.\(messageID)" : nil)
             }
         case let .code(language, text):
@@ -516,6 +524,7 @@ private struct MarkdownMessageView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     Text(verbatim: text)
                         .font(.system(.footnote, design: .monospaced))
+                        .textSelection(.enabled)
                         .messageAnchor(isAnchor ? "assistant.message.\(messageID)" : nil)
                 }
             }
@@ -531,21 +540,127 @@ private struct MarkdownMessageView: View {
         }
     }
 
-    private func inlineText(_ source: String) -> Text {
-        let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        guard let attributed = try? AttributedString(markdown: source, options: options) else {
-            return Text(verbatim: source)
+    private func inlineText(_ source: String, style: SelectableAssistantText.Style) -> some View {
+        SelectableAssistantText(source: source, style: style, onAddToChat: onAddToChat)
+    }
+}
+
+private struct SelectableAssistantText: UIViewRepresentable {
+    enum Style: Equatable {
+        case body
+        case heading(Int)
+        case quote
+
+        var baseFont: UIFont {
+            switch self {
+            case .body, .quote:
+                UIFont.preferredFont(forTextStyle: .body)
+            case .heading(1):
+                UIFont.preferredFont(forTextStyle: .title3).withTraits(.traitBold)
+            case .heading(2):
+                UIFont.preferredFont(forTextStyle: .headline).withTraits(.traitBold)
+            case .heading(3):
+                UIFont.preferredFont(forTextStyle: .body).withTraits(.traitBold)
+            case .heading:
+                UIFont.preferredFont(forTextStyle: .subheadline).withTraits(.traitBold)
+            }
         }
-        return Text(attributed)
+
+        var color: UIColor {
+            switch self {
+            case .quote: .secondaryLabel
+            default: .label
+            }
+        }
     }
 
-    private func headingFont(_ level: Int) -> Font {
-        switch level {
-        case 1: .title3.weight(.bold)
-        case 2: .headline.weight(.bold)
-        case 3: .body.weight(.semibold)
-        default: .subheadline.weight(.semibold)
+    let source: String
+    let style: Style
+    let onAddToChat: (String) -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
+
+    func makeUIView(context: Context) -> UITextView {
+        let textView = UITextView()
+        textView.delegate = context.coordinator
+        textView.isEditable = false
+        textView.isSelectable = true
+        textView.isScrollEnabled = false
+        textView.backgroundColor = .clear
+        textView.textContainerInset = .zero
+        textView.textContainer.lineFragmentPadding = 0
+        textView.adjustsFontForContentSizeCategory = true
+        textView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        textView.linkTextAttributes = [.foregroundColor: UIColor.systemBlue]
+        return textView
+    }
+
+    func updateUIView(_ textView: UITextView, context: Context) {
+        context.coordinator.parent = self
+        let attributed = Self.makeAttributedText(source, style: style)
+        if textView.attributedText != attributed { textView.attributedText = attributed }
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
+        guard let width = proposal.width else { return nil }
+        let size = uiView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
+        return CGSize(width: width, height: ceil(size.height))
+    }
+
+    private static func makeAttributedText(_ source: String, style: Style) -> NSAttributedString {
+        let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        guard let parsed = try? AttributedString(markdown: source, options: options) else {
+            return NSAttributedString(string: source, attributes: attributes(font: style.baseFont, color: style.color))
         }
+        let result = NSMutableAttributedString()
+        for run in parsed.runs {
+            var font = style.baseFont
+            if style == .quote { font = font.withTraits(.traitItalic) }
+            if let intent = run.inlinePresentationIntent {
+                if intent.contains(.stronglyEmphasized) { font = font.withTraits(.traitBold) }
+                if intent.contains(.emphasized) { font = font.withTraits(.traitItalic) }
+                if intent.contains(.code) { font = UIFont.monospacedSystemFont(ofSize: font.pointSize * 0.92, weight: .regular) }
+            }
+            var runAttributes = attributes(font: font, color: style.color)
+            if let link = run.link { runAttributes[.link] = link }
+            result.append(NSAttributedString(string: String(parsed[run.range].characters), attributes: runAttributes))
+        }
+        return result
+    }
+
+    private static func attributes(font: UIFont, color: UIColor) -> [NSAttributedString.Key: Any] {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineSpacing = 3
+        return [.font: font, .foregroundColor: color, .paragraphStyle: paragraph]
+    }
+
+    final class Coordinator: NSObject, UITextViewDelegate {
+        var parent: SelectableAssistantText
+
+        init(parent: SelectableAssistantText) { self.parent = parent }
+
+        func textView(
+            _ textView: UITextView,
+            editMenuForTextIn range: NSRange,
+            suggestedActions: [UIMenuElement]
+        ) -> UIMenu? {
+            guard range.length > 0, range.location != NSNotFound else { return UIMenu(children: suggestedActions) }
+            let add = UIAction(title: "Add to Chat", image: UIImage(systemName: "plus.bubble")) { [weak textView, weak self] _ in
+                guard let textView, let self else { return }
+                let excerpt = (textView.text as NSString).substring(with: range)
+                self.parent.onAddToChat(excerpt)
+                textView.selectedRange = NSRange(location: NSMaxRange(range), length: 0)
+                textView.resignFirstResponder()
+            }
+            return UIMenu(children: [add] + suggestedActions)
+        }
+    }
+}
+
+private extension UIFont {
+    func withTraits(_ traits: UIFontDescriptor.SymbolicTraits) -> UIFont {
+        guard let descriptor = fontDescriptor.withSymbolicTraits(fontDescriptor.symbolicTraits.union(traits)) else { return self }
+        return UIFont(descriptor: descriptor, size: pointSize)
     }
 }
 

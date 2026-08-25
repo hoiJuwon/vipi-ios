@@ -4,6 +4,8 @@ struct ComposerView: View {
     @Binding var draft: String
     let phase: SessionPhase
     let queuedPrompts: [QueuedPrompt]
+    let annotations: [ChatAnnotation]
+    let onRemoveAnnotation: (String) -> Void
     let onSend: (PromptDelivery) -> Void
     let onStop: () -> Void
 
@@ -34,6 +36,40 @@ struct ComposerView: View {
                 .accessibilityIdentifier("chat.queue")
                 .accessibilityLabel("Queued messages")
                 .accessibilityValue("\(queuedPrompts.count)")
+            }
+
+            ForEach(annotations) { annotation in
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "quote.opening")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(VipiTheme.accent)
+                        .padding(.top, 2)
+                    Text(annotation.text.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression))
+                        .font(.caption)
+                        .foregroundStyle(VipiTheme.secondary)
+                        .lineLimit(2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Button {
+                        onRemoveAnnotation(annotation.id)
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.caption2.weight(.bold))
+                            .frame(width: 22, height: 22)
+                    }
+                    .foregroundStyle(VipiTheme.secondary)
+                    .accessibilityLabel("Remove annotation")
+                }
+                .padding(.leading, 12)
+                .padding(.trailing, 8)
+                .padding(.vertical, 8)
+                .background(VipiTheme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(VipiTheme.accent.opacity(0.24), lineWidth: 0.75)
+                }
+                .padding(.horizontal, 2)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("chat.annotation")
             }
 
             HStack(alignment: .bottom, spacing: 9) {
@@ -72,7 +108,7 @@ struct ComposerView: View {
             }
         }
         .padding(.horizontal, 12)
-        .padding(.top, queuedPrompts.isEmpty ? 9 : 7)
+        .padding(.top, queuedPrompts.isEmpty && annotations.isEmpty ? 9 : 7)
         .padding(.bottom, 7)
         .background(.ultraThinMaterial)
         .overlay(alignment: .top) { Divider().overlay(VipiTheme.stroke) }

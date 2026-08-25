@@ -30,5 +30,6 @@ Official references:
 - **Identity:** Ice Blue is the primary accent across bubbles, controls, selection, and ambient gradients; use a dark foreground on bright Ice Blue surfaces in dark appearance.
 - **Working state:** progress reads like the next assistant message, never a button or card. Italic activity copy, compact English duration (`42s`, `2m 13s`), and the animated Ice Blue luminous core form one leading-aligned vertical stack; the orb shell, material background, and border stay hidden.
 - **Submitted turn:** after a prompt is accepted, its user bubble scrolls to the top of the response viewport with progress directly beneath it, reserving the remaining viewport for the incoming answer.
+- **Quoted context:** selecting assistant prose offers `Add to Chat`; the chosen excerpt appears as a compact removable quote annotation above the composer and stays scoped to that session's next prompt.
 - **Status color:** color communicates state but never serves as the only indicator.
 - **Motion:** freeze the Liquid Orb to a representative frame when Reduce Motion is enabled.

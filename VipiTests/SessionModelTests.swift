@@ -76,6 +76,20 @@ final class SessionModelTests: XCTestCase {
         XCTAssertEqual(store.draft(for: "session-b"), "second draft")
     }
 
+    @MainActor func testSelectedAssistantExcerptsRemainPerSessionAndCanBeRemoved() {
+        let store = AppStore()
+        store.addAnnotation(messageID: "answer-a", text: "  selected answer text  ", to: "session-a")
+        store.addAnnotation(messageID: "answer-a", text: "selected answer text", to: "session-a")
+        store.addAnnotation(messageID: "answer-b", text: "another answer", to: "session-b")
+
+        XCTAssertEqual(store.annotations(for: "session-a").map(\.text), ["selected answer text"])
+        XCTAssertEqual(store.annotations(for: "session-b").map(\.text), ["another answer"])
+        let annotationID = store.annotations(for: "session-a")[0].id
+        store.removeAnnotation(annotationID, from: "session-a")
+        XCTAssertTrue(store.annotations(for: "session-a").isEmpty)
+        XCTAssertEqual(store.annotations(for: "session-b").count, 1)
+    }
+
     @MainActor func testWorkingPromptIsQueuedUntilItsUserMessageStarts() async throws {
         let store = AppStore(startsInDemoMode: true)
         let originalCount = store.messages(for: "mobile").count

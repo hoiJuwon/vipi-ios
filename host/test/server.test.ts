@@ -370,7 +370,7 @@ test("still rate limits authenticated mobile command abuse", async () => {
 test("runs the real Pi extension through broker registration, history, controls, streaming, and tools", async () => {
   process.env.PI_CODING_AGENT_DIR = directory;
   process.env.VIPI_BROKER_URL = `ws://127.0.0.1:${port}/ws`;
-  const handlers = new Map<string, (event: any, context: ExtensionContext) => Promise<void>>();
+  const handlers = new Map<string, (event: any, context: ExtensionContext) => Promise<any>>();
   const delivered: Array<{ text: string; delivery?: string }> = [];
   let aborted = false;
   let compacted = false;
@@ -394,7 +394,7 @@ test("runs the real Pi extension through broker registration, history, controls,
   } as unknown as ExtensionContext;
   const emitted: Array<{ name: string; payload: unknown }> = [];
   const api = {
-    on: (name: string, handler: (event: any, ctx: ExtensionContext) => Promise<void>) => { handlers.set(name, handler); },
+    on: (name: string, handler: (event: any, ctx: ExtensionContext) => Promise<any>) => { handlers.set(name, handler); },
     events: { emit: (name: string, payload: unknown) => emitted.push({ name, payload }) },
     getSessionName: () => "Real / Extension",
     getThinkingLevel: () => "medium",
@@ -436,6 +436,21 @@ test("runs the real Pi extension through broker registration, history, controls,
     await receiveType(mobile, "session.response");
   }
   assert.deepEqual(delivered, [{ text: "prompt" }, { text: "steer", delivery: "steer" }, { text: "follow", delivery: "followUp" }]);
+
+  send(mobile, "session.prompt", {
+    sessionID: "real-extension",
+    text: "use this reference",
+    delivery: "prompt",
+    annotations: [{ messageID: "answer-1", text: "selected assistant excerpt" }],
+  }, "real-annotated");
+  await receiveType(mobile, "session.response");
+  assert.deepEqual(delivered.at(-1), { text: "use this reference" });
+  const annotationContext = await handlers.get("before_agent_start")?.({ type: "before_agent_start", prompt: "use this reference" }, context);
+  assert.equal(annotationContext.message.display, false);
+  assert.equal(annotationContext.message.customType, "vipi-annotations");
+  assert.match(annotationContext.message.content, /selected assistant excerpt/);
+  assert.deepEqual(annotationContext.message.details.messageIDs, ["answer-1"]);
+
   send(mobile, "session.abort", { sessionID: "real-extension" }, "real-abort");
   await receiveType(mobile, "session.response");
   send(mobile, "session.compact", { sessionID: "real-extension" }, "real-compact");

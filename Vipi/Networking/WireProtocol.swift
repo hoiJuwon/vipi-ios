@@ -46,5 +46,6 @@ struct PromptPayload: Encodable {
     let sessionID: String
     let text: String
     let delivery: PromptDelivery
+    let annotations: [ChatAnnotation]
 }
 struct RenamePayload: Encodable { let sessionID: String; let name: String }

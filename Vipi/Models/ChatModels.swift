@@ -2,6 +2,18 @@ import Foundation
 
 enum ChatRole: String, Codable, Sendable { case user, assistant, system }
 
+struct ChatAnnotation: Identifiable, Codable, Hashable, Sendable {
+    let id: String
+    let messageID: String
+    let text: String
+
+    init(id: String = UUID().uuidString, messageID: String, text: String) {
+        self.id = id
+        self.messageID = messageID
+        self.text = text
+    }
+}
+
 enum ProgressActivity: String, Codable, Sendable {
     case thinking, reading, editing, running, searching
 

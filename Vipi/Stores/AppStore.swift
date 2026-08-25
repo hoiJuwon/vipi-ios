@@ -15,6 +15,7 @@ final class AppStore {
     var showingSettings = false
     var activityItems: [ActivityItem] = []
     var draftsBySession: [String: String] = [:]
+    var annotationsBySession: [String: [ChatAnnotation]] = [:]
     var queuedPromptsBySession: [String: [QueuedPrompt]] = [:]
     var progressBySession: [String: ProgressActivity] = [:]
     var commandError: String?
@@ -76,6 +77,7 @@ final class AppStore {
     func messages(for id: String) -> [ChatMessage] { messagesBySession[id] ?? [] }
     func branches(for id: String) -> [BranchNode] { branchesBySession[id] ?? [] }
     func draft(for id: String) -> String { draftsBySession[id] ?? "" }
+    func annotations(for id: String) -> [ChatAnnotation] { annotationsBySession[id] ?? [] }
     func queuedPrompts(for id: String) -> [QueuedPrompt] { queuedPromptsBySession[id] ?? [] }
     func progressActivity(for id: String) -> ProgressActivity { progressBySession[id] ?? .thinking }
     func setDraft(_ draft: String, for id: String) {
@@ -84,6 +86,22 @@ final class AppStore {
         } else {
             draftsBySession[id] = draft
         }
+    }
+    func addAnnotation(messageID: String, text: String, to sessionID: String) {
+        let excerpt = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(4_000))
+        guard !excerpt.isEmpty else { return }
+        var annotations = annotationsBySession[sessionID, default: []]
+        guard !annotations.contains(where: { $0.messageID == messageID && $0.text == excerpt }) else { return }
+        if annotations.count == 4 { annotations.removeFirst() }
+        annotations.append(ChatAnnotation(messageID: messageID, text: excerpt))
+        annotationsBySession[sessionID] = annotations
+    }
+    func removeAnnotation(_ annotationID: String, from sessionID: String) {
+        annotationsBySession[sessionID]?.removeAll { $0.id == annotationID }
+        if annotationsBySession[sessionID]?.isEmpty == true { annotationsBySession.removeValue(forKey: sessionID) }
+    }
+    func clearAnnotations(for sessionID: String) {
+        annotationsBySession.removeValue(forKey: sessionID)
     }
     func isHistoryLoading(for id: String) -> Bool { historyRequestsInFlight.contains(id) }
     func canLoadOlderHistory(for id: String) -> Bool { historyHasMoreBySession[id] == true }
@@ -179,7 +197,7 @@ final class AppStore {
     }
 
     @discardableResult
-    func send(text: String, to sessionID: String, delivery: PromptDelivery) async -> Bool {
+    func send(text: String, annotations: [ChatAnnotation] = [], to sessionID: String, delivery: PromptDelivery) async -> Bool {
         let message = ChatMessage(id: UUID().uuidString, role: .user, text: text, timestamp: .now)
         if connectionState == .demo {
             if delivery == .followUp {
@@ -195,7 +213,7 @@ final class AppStore {
             return false
         }
         do {
-            _ = try await broker.send(type: "session.prompt", payload: PromptPayload(sessionID: sessionID, text: text, delivery: delivery))
+            _ = try await broker.send(type: "session.prompt", payload: PromptPayload(sessionID: sessionID, text: text, delivery: delivery, annotations: annotations))
             if delivery == .followUp {
                 enqueuePrompt(text, for: sessionID)
             } else {

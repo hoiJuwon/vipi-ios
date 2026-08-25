@@ -31,6 +31,8 @@ The device token is defense in depth in addition to tailnet membership. The app 
 
 Every envelope carries `protocolVersion`. Unknown event types are ignored by the app. Durable reconnect uses monotonically increasing `seq` with a host-side bounded replay buffer. Full and incremental history are normalized into user messages and final assistant answers only. Tool calls, `toolResult` entries, arguments, partial output, results, compaction summaries, and system messages are discarded before the mobile history DTO is encoded. Live tools are reduced at the extension/host boundary to a small progress category without payload content.
 
+Assistant excerpts selected with `Add to Chat` travel only with the next `session.prompt`. The extension injects them as a non-displayed custom context message in `before_agent_start`, while the persisted user message remains the user's clean draft. This preserves the single-writer invariant and prevents annotation markup from leaking into mobile or terminal transcript bubbles.
+
 ## Deliberate future scope
 
 Offline saved-session ownership and blocking extension UI cards are not exposed as controls in this release. They require explicit ownership leases and a separately designed mobile interaction protocol; placeholder controls are intentionally absent.
