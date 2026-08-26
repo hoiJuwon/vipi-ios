@@ -18,6 +18,11 @@ const context = {
     getBranch: () => branch,
   },
   getContextUsage: () => ({ percent: 12 }),
+  ui: {
+    confirm: async () => false,
+    select: async () => undefined,
+    input: async () => undefined,
+  },
   abort: () => {},
   compact: () => {},
 } as unknown as ExtensionContext;

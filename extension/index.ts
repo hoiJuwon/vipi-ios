@@ -21,14 +21,26 @@ type RuntimeState = {
   ctx?: ExtensionContext;
   socket?: WebSocket;
   reconnect?: NodeJS.Timeout;
+  restoreUI?: () => void;
   phase: string;
   unread: boolean;
+  mobileConnected: boolean;
   disposed: boolean;
 };
 
+type PendingInteraction = {
+  resolve: (value: unknown) => void;
+  timer: NodeJS.Timeout;
+  removeAbort?: () => void;
+};
+
+const REMOTE_UNAVAILABLE = Symbol("remote-unavailable");
+const REMOTE_ABORTED = Symbol("remote-aborted");
+
 export default function vipiBridge(pi: ExtensionAPI) {
-  const runtime: RuntimeState = { phase: "idle", unread: false, disposed: false };
+  const runtime: RuntimeState = { phase: "idle", unread: false, mobileConnected: false, disposed: false };
   const pendingAnnotatedTurns: PendingAnnotatedTurn[] = [];
+  const pendingInteractions = new Map<string, PendingInteraction>();
 
   function recentMessageSnapshot(ctx: ExtensionContext): { preview?: string; timestamp?: string } {
     for (const entry of [...ctx.sessionManager.getBranch()].reverse()) {
@@ -82,6 +94,80 @@ export default function vipiBridge(pi: ExtensionAPI) {
     }
   }
 
+  function finishInteraction(requestID: string, value: unknown) {
+    const pending = pendingInteractions.get(requestID);
+    if (!pending) return;
+    pendingInteractions.delete(requestID);
+    clearTimeout(pending.timer);
+    pending.removeAbort?.();
+    pending.resolve(value);
+  }
+
+  function finishAllInteractions(value: unknown) {
+    for (const requestID of [...pendingInteractions.keys()]) finishInteraction(requestID, value);
+  }
+
+  async function requestRemoteInteraction(
+    ctx: ExtensionContext,
+    request: { kind: "confirm" | "select" | "input"; title: string; message?: string; options?: string[]; placeholder?: string },
+    opts?: { signal?: AbortSignal; timeout?: number },
+  ): Promise<unknown> {
+    if (!runtime.mobileConnected || runtime.socket?.readyState !== WebSocket.OPEN) return REMOTE_UNAVAILABLE;
+    if (opts?.signal?.aborted) return REMOTE_ABORTED;
+    const requestID = crypto.randomUUID();
+    const timeout = Math.max(1_000, opts?.timeout ?? 60_000);
+    const response = new Promise<unknown>((resolve) => {
+      const timer = setTimeout(() => finishInteraction(requestID, opts?.timeout ? REMOTE_ABORTED : REMOTE_UNAVAILABLE), timeout);
+      timer.unref?.();
+      const pending: PendingInteraction = { resolve, timer };
+      if (opts?.signal) {
+        const abort = () => finishInteraction(requestID, REMOTE_ABORTED);
+        opts.signal.addEventListener("abort", abort, { once: true });
+        pending.removeAbort = () => opts.signal?.removeEventListener("abort", abort);
+      }
+      pendingInteractions.set(requestID, pending);
+    });
+    send("runtime.interaction", {
+      requestID,
+      sessionID: ctx.sessionManager.getSessionId(),
+      ...request,
+    });
+    return response;
+  }
+
+  function bridgeInteractiveUI(ctx: ExtensionContext) {
+    runtime.restoreUI?.();
+    const ui = ctx.ui;
+    const originalConfirm = ui.confirm.bind(ui);
+    const originalSelect = ui.select.bind(ui);
+    const originalInput = ui.input.bind(ui);
+
+    ui.confirm = async (title, message, opts) => {
+      const response = await requestRemoteInteraction(ctx, { kind: "confirm", title, message }, opts);
+      if (response === REMOTE_ABORTED) return false;
+      if (response === REMOTE_UNAVAILABLE) return originalConfirm(title, message, opts);
+      return response === true;
+    };
+    ui.select = async (title, options, opts) => {
+      const response = await requestRemoteInteraction(ctx, { kind: "select", title, options }, opts);
+      if (response === REMOTE_ABORTED || response === null) return undefined;
+      if (response === REMOTE_UNAVAILABLE) return originalSelect(title, options, opts);
+      return typeof response === "string" ? response : undefined;
+    };
+    ui.input = async (title, placeholder, opts) => {
+      const response = await requestRemoteInteraction(ctx, { kind: "input", title, placeholder }, opts);
+      if (response === REMOTE_ABORTED || response === null) return undefined;
+      if (response === REMOTE_UNAVAILABLE) return originalInput(title, placeholder, opts);
+      return typeof response === "string" ? response : undefined;
+    };
+    runtime.restoreUI = () => {
+      ui.confirm = originalConfirm;
+      ui.select = originalSelect;
+      ui.input = originalInput;
+      runtime.restoreUI = undefined;
+    };
+  }
+
   function connect(ctx: ExtensionContext) {
     if (runtime.disposed) return;
     runtime.ctx = ctx;
@@ -121,6 +207,17 @@ export default function vipiBridge(pi: ExtensionAPI) {
     const ctx = runtime.ctx; if (!ctx) return;
     const reply = (ok: boolean, result?: unknown) => send("runtime.response", { requestID: message.id, ok, result });
     try {
+      if (message.type === "runtime.mobilePresence") {
+        runtime.mobileConnected = message.payload?.connected === true;
+        if (!runtime.mobileConnected) finishAllInteractions(REMOTE_UNAVAILABLE);
+        return;
+      }
+      if (message.type === "session.interaction.respond") {
+        const requestID = String(message.payload?.requestID ?? "");
+        if (requestID) finishInteraction(requestID, message.payload?.response ?? null);
+        send("runtime.session", { session: sessionSnapshot(ctx) });
+        return;
+      }
       if (message.type === "session.read") {
         const sessionID = String(message.payload?.sessionID ?? "");
         if (sessionID !== ctx.sessionManager.getSessionId()) throw new Error("session mismatch");
@@ -167,7 +264,13 @@ export default function vipiBridge(pi: ExtensionAPI) {
     } catch (error) { reply(false, { error: error instanceof Error ? error.message : String(error) }); }
   }
 
-  pi.on("session_start", async (_event, ctx) => { runtime.disposed = false; runtime.phase = "idle"; connect(ctx); send("runtime.session", { session: sessionSnapshot(ctx) }); });
+  pi.on("session_start", async (_event, ctx) => {
+    runtime.disposed = false;
+    runtime.phase = "idle";
+    bridgeInteractiveUI(ctx);
+    connect(ctx);
+    send("runtime.session", { session: sessionSnapshot(ctx) });
+  });
   pi.on("session_info_changed", async (_event, ctx) => send("runtime.session", { session: sessionSnapshot(ctx) }));
   pi.on("before_agent_start", async (event) => {
     const index = pendingAnnotatedTurns.findIndex((turn) => turn.text === event.prompt);
@@ -219,6 +322,9 @@ export default function vipiBridge(pi: ExtensionAPI) {
     runtime.disposed = true;
     runtime.ctx = undefined;
     pendingAnnotatedTurns.length = 0;
+    finishAllInteractions(REMOTE_ABORTED);
+    runtime.restoreUI?.();
+    runtime.mobileConnected = false;
     if (runtime.reconnect) clearTimeout(runtime.reconnect);
     runtime.reconnect = undefined;
     const socket = runtime.socket;

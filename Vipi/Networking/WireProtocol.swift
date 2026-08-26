@@ -42,6 +42,11 @@ indirect enum JSONValue: Codable, Sendable {
 
 struct AuthenticatePayload: Encodable { let token: String; let lastSeq: Int? }
 struct SessionCommandPayload: Encodable { let sessionID: String }
+struct InteractionResponsePayload: Encodable {
+    let sessionID: String
+    let requestID: String
+    let response: JSONValue
+}
 struct PromptPayload: Encodable {
     let sessionID: String
     let text: String

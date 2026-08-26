@@ -8,6 +8,9 @@ final class VipiUITests: XCTestCase {
         continueAfterFailure = false
         app = XCUIApplication()
         app.launchArguments = ["--uitesting"]
+        if name.contains("PermissionInteraction") {
+            app.launchArguments.append("--interaction-preview")
+        }
         if name.contains("LiveHost") {
             app.launchEnvironment["VIPI_E2E_PAIRING"] = #"{"host":"http://127.0.0.1:9876","token":"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ"}"#
         }
@@ -154,6 +157,40 @@ final class VipiUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["chat.progress"].exists)
         XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label == %@", "작업 기록")).count, 0)
         XCTAssertTrue(app.buttons["chat.menu"].isHittable)
+    }
+
+    func testPermissionInteractionAppearsAndCanBeAllowed() {
+        let sheet = app.descendants(matching: .any)["interaction.sheet"]
+        XCTAssertTrue(sheet.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Permission required"].exists)
+        let allow = app.buttons["Allow"]
+        XCTAssertTrue(allow.isHittable)
+        allow.tap()
+        XCTAssertFalse(sheet.waitForExistence(timeout: 1))
+    }
+
+    func testManualScrollResynchronizesAssistantNavigation() {
+        let session = app.buttons["session.mobile"]
+        XCTAssertTrue(session.waitForExistence(timeout: 5))
+        session.tap()
+
+        let previous = app.buttons["chat.previousAssistantMessage"]
+        previous.tap()
+        Thread.sleep(forTimeInterval: 0.8)
+        let firstAssistant = app.descendants(matching: .any)["assistant.message.m0a"]
+        XCTAssertTrue(firstAssistant.isHittable)
+
+        let transcript = app.scrollViews["chat.transcript"]
+        let secondAssistant = app.descendants(matching: .any)["assistant.message.m2"]
+        for _ in 0..<3 where !secondAssistant.isHittable {
+            transcript.swipeUp()
+        }
+        XCTAssertTrue(secondAssistant.isHittable)
+        Thread.sleep(forTimeInterval: 0.5)
+
+        previous.tap()
+        Thread.sleep(forTimeInterval: 0.8)
+        XCTAssertTrue(firstAssistant.isHittable)
     }
 
     func testPairingAndConnectionControlsAreAccessible() {

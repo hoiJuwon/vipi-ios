@@ -30,6 +30,7 @@ const runtimePanes = new Map<string, string>();
 const liveSessions = new Map<string, SessionRecord>();
 const pendingRequests = new Map<string, WebSocket>();
 const pendingAssistantEvents = new Map<string, Record<string, unknown>>();
+const pendingInteractions = new Map<string, string>();
 
 const server = createServer((request, response) => {
   if (request.url === "/health") {
@@ -70,6 +71,7 @@ wss.on("connection", (socket) => {
     if (role === "unknown") {
       if (message.type === "auth.authenticate" && tokenMatches(token, message.payload?.token)) {
         role = "mobile"; mobileClients.add(socket); clearTimeout(authTimer);
+        notifyRuntimeMobilePresence();
         const lastSeq = typeof message.payload?.lastSeq === "number" ? message.payload.lastSeq : undefined;
         const brokerHead = sequence;
         socket.send(JSON.stringify(envelope("auth.ok", { role }, message.id, ++sequence)));
@@ -95,13 +97,36 @@ wss.on("connection", (socket) => {
         if (paneID) runtimePanes.set(session.id, paneID);
         liveSessions.set(session.id, session);
         clearTimeout(authTimer); broadcast("sessions.snapshot", { sessions: mergedSessions() });
+        socket.send(JSON.stringify(envelope("runtime.mobilePresence", { connected: mobileClients.size > 0 }, undefined, ++sequence)));
         return;
       }
       socket.close(4001, "unauthorized"); return;
     }
 
     if (role === "runtime") {
-      if (message.type === "runtime.session") {
+      if (message.type === "runtime.interaction") {
+        const requestID = typeof message.payload.requestID === "string" ? message.payload.requestID : undefined;
+        const kind = typeof message.payload.kind === "string" && ["confirm", "select", "input"].includes(message.payload.kind)
+          ? message.payload.kind : undefined;
+        if (!requestID || !runtimeSessionID || !kind) return;
+        if (mobileClients.size === 0) {
+          socket.send(JSON.stringify(envelope("runtime.mobilePresence", { connected: false }, undefined, ++sequence)));
+          return;
+        }
+        const interaction = {
+          requestID,
+          sessionID: runtimeSessionID,
+          kind,
+          title: String(message.payload.title ?? "Action required").slice(0, 300),
+          ...(typeof message.payload.message === "string" ? { message: message.payload.message.slice(0, 8_000) } : {}),
+          ...(Array.isArray(message.payload.options) ? {
+            options: message.payload.options.filter((value): value is string => typeof value === "string").slice(0, 30).map((value) => value.slice(0, 500)),
+          } : {}),
+          ...(typeof message.payload.placeholder === "string" ? { placeholder: message.payload.placeholder.slice(0, 500) } : {}),
+        };
+        pendingInteractions.set(requestID, runtimeSessionID);
+        broadcastEphemeral("session.interaction", interaction);
+      } else if (message.type === "runtime.session") {
         const session = message.payload.session as unknown as SessionRecord;
         const previousPhase = session?.id ? liveSessions.get(session.id)?.phase : undefined;
         if (session?.id) {
@@ -139,6 +164,20 @@ wss.on("connection", (socket) => {
       token = rotateToken();
       socket.send(JSON.stringify(envelope("auth.rotated", { token }, message.id, ++sequence)));
       for (const client of mobileClients) if (client !== socket) client.close(4001, "token rotated");
+      return;
+    }
+    if (message.type === "session.interaction.respond") {
+      const requestID = typeof message.payload?.requestID === "string" ? message.payload.requestID : undefined;
+      const sessionID = typeof message.payload?.sessionID === "string" ? message.payload.sessionID : undefined;
+      const registeredSessionID = requestID ? pendingInteractions.get(requestID) : undefined;
+      const runtime = sessionID && registeredSessionID === sessionID ? currentRuntime(sessionID) : undefined;
+      if (!requestID || !runtime || runtime.readyState !== WebSocket.OPEN) {
+        socket.send(JSON.stringify(envelope("error", { code: "INTERACTION_EXPIRED" }, message.id, ++sequence)));
+        return;
+      }
+      pendingInteractions.delete(requestID);
+      runtime.send(JSON.stringify(message));
+      socket.send(JSON.stringify(envelope("session.response", { requestID: message.id, ok: true }, message.id, ++sequence)));
       return;
     }
     if (message.type === "session.read") {
@@ -189,12 +228,17 @@ wss.on("connection", (socket) => {
   });
 
   socket.on("close", () => {
-    clearTimeout(authTimer); mobileClients.delete(socket);
+    clearTimeout(authTimer);
+    const wasMobile = mobileClients.delete(socket);
+    if (wasMobile) notifyRuntimeMobilePresence();
     for (const [requestID, requester] of pendingRequests) if (requester === socket) pendingRequests.delete(requestID);
     if (runtimeSessionID && runtimes.get(runtimeSessionID) === socket) {
       runtimes.delete(runtimeSessionID);
       runtimePanes.delete(runtimeSessionID);
       pendingAssistantEvents.delete(runtimeSessionID);
+      for (const [requestID, sessionID] of pendingInteractions) {
+        if (sessionID === runtimeSessionID) pendingInteractions.delete(requestID);
+      }
       const session = liveSessions.get(runtimeSessionID);
       if (session) liveSessions.set(runtimeSessionID, { ...session, phase: "offline" });
       broadcast("sessions.snapshot", { sessions: mergedSessions() });
@@ -293,6 +337,18 @@ function relayRuntimeEvent(payload: Record<string, unknown>): void {
   } else {
     broadcast("session.event", sanitized);
   }
+}
+
+function broadcastEphemeral(type: string, payload: unknown): void {
+  const data = JSON.stringify(envelope(type, payload, undefined, ++sequence));
+  for (const client of mobileClients) if (client.readyState === WebSocket.OPEN) client.send(data);
+}
+
+function notifyRuntimeMobilePresence(): void {
+  const connected = mobileClients.size > 0;
+  if (!connected) pendingInteractions.clear();
+  const data = JSON.stringify(envelope("runtime.mobilePresence", { connected }, undefined, ++sequence));
+  for (const runtime of runtimes.values()) if (runtime.readyState === WebSocket.OPEN) runtime.send(data);
 }
 
 function broadcast(type: string, payload: unknown): void {

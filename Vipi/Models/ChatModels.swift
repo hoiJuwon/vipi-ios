@@ -2,6 +2,22 @@ import Foundation
 
 enum ChatRole: String, Codable, Sendable { case user, assistant, system }
 
+enum RemoteInteractionKind: String, Codable, Sendable {
+    case confirm, select, input
+}
+
+struct RemoteInteraction: Identifiable, Codable, Hashable, Sendable {
+    let requestID: String
+    let sessionID: String
+    let kind: RemoteInteractionKind
+    let title: String
+    let message: String?
+    let options: [String]?
+    let placeholder: String?
+
+    var id: String { requestID }
+}
+
 struct ChatAnnotation: Identifiable, Codable, Hashable, Sendable {
     let id: String
     let messageID: String

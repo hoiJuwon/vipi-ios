@@ -33,6 +33,8 @@ Every envelope carries `protocolVersion`. Unknown event types are ignored by the
 
 Assistant excerpts selected with `Add to Chat` travel only with the next `session.prompt`. The extension injects them as a non-displayed custom context message in `before_agent_start`, while the persisted user message remains the user's clean draft. This preserves the single-writer invariant and prevents annotation markup from leaking into mobile or terminal transcript bubbles.
 
+Blocking extension interactions (`confirm`, `select`, and `input`) are bridged only while an authenticated mobile socket is present. Requests are ephemeral rather than replayed, responses are correlated to the originating runtime, and disconnect or timeout falls back to the original terminal UI. This prevents stale permission requests from reappearing after reconnect.
+
 ## Deliberate future scope
 
-Offline saved-session ownership and blocking extension UI cards are not exposed as controls in this release. They require explicit ownership leases and a separately designed mobile interaction protocol; placeholder controls are intentionally absent.
+Offline saved-session ownership remains out of scope. It requires an explicit ownership lease before any second process may resume a JSONL session.

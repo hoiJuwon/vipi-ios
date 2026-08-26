@@ -16,6 +16,7 @@ final class AppStore {
     var activityItems: [ActivityItem] = []
     var draftsBySession: [String: String] = [:]
     var annotationsBySession: [String: [ChatAnnotation]] = [:]
+    var pendingInteractions: [RemoteInteraction] = []
     var queuedPromptsBySession: [String: [QueuedPrompt]] = [:]
     var progressBySession: [String: ProgressActivity] = [:]
     var commandError: String?
@@ -165,6 +166,19 @@ final class AppStore {
         branchesBySession = MockData.branches
         activityItems = MockData.activity
         connectionState = .demo
+        #if DEBUG
+        if CommandLine.arguments.contains("--interaction-preview") {
+            pendingInteractions = [RemoteInteraction(
+                requestID: "preview-permission",
+                sessionID: "mobile",
+                kind: .confirm,
+                title: "Permission required",
+                message: "Allow Pi to continue with this operation?",
+                options: nil,
+                placeholder: nil
+            )]
+        }
+        #endif
     }
 
     func pair(payload: String) throws {
@@ -247,6 +261,27 @@ final class AppStore {
             _ = try await broker.send(type: "session.compact", payload: SessionCommandPayload(sessionID: sessionID))
         } catch {
             commandError = "Compaction could not be started: \(error.localizedDescription)"
+        }
+    }
+
+    func respond(to interaction: RemoteInteraction, with response: JSONValue) async {
+        pendingInteractions.removeAll { $0.requestID == interaction.requestID }
+        if connectionState == .demo { return }
+        guard connectionState == .connected else {
+            commandError = "The permission response was not sent because the host is disconnected."
+            return
+        }
+        do {
+            _ = try await broker.send(
+                type: "session.interaction.respond",
+                payload: InteractionResponsePayload(
+                    sessionID: interaction.sessionID,
+                    requestID: interaction.requestID,
+                    response: response
+                )
+            )
+        } catch {
+            commandError = "Permission response could not be delivered: \(error.localizedDescription)"
         }
     }
 
@@ -422,6 +457,15 @@ final class AppStore {
         }
         if envelope.type == "session.event", let payload = envelope.payload {
             reduceSessionEvent(payload)
+            return
+        }
+        if envelope.type == "session.interaction", let payload = envelope.payload,
+           let interaction: RemoteInteraction = decode(payload) {
+            guard !pendingInteractions.contains(where: { $0.requestID == interaction.requestID }) else { return }
+            pendingInteractions.append(interaction)
+            if let index = sessions.firstIndex(where: { $0.id == interaction.sessionID }) {
+                sessions[index].phase = .waitingForInput
+            }
             return
         }
         if envelope.type == "session.response", let payload = envelope.payload {

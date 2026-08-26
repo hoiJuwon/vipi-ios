@@ -76,6 +76,17 @@ final class SessionModelTests: XCTestCase {
         XCTAssertEqual(store.draft(for: "session-b"), "second draft")
     }
 
+    @MainActor func testRemotePermissionRequestIsQueuedForMobileResponse() async throws {
+        let store = AppStore(startsInDemoMode: true)
+        let data = Data(#"{"type":"session.interaction","payload":{"requestID":"permission-1","sessionID":"mobile","kind":"confirm","title":"Permission required","message":"Allow operation?"}}"#.utf8)
+        await store.handle(try JSONDecoder().decode(ServerEnvelope.self, from: data))
+
+        XCTAssertEqual(store.pendingInteractions.map(\.requestID), ["permission-1"])
+        XCTAssertEqual(store.session(id: "mobile")?.phase, .waitingForInput)
+        await store.respond(to: store.pendingInteractions[0], with: .bool(true))
+        XCTAssertTrue(store.pendingInteractions.isEmpty)
+    }
+
     @MainActor func testSelectedAssistantExcerptsRemainPerSessionAndCanBeRemoved() {
         let store = AppStore()
         store.addAnnotation(messageID: "answer-a", text: "  selected answer text  ", to: "session-a")

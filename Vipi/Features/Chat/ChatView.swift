@@ -145,6 +145,16 @@ struct ChatView: View {
                                     store.addAnnotation(messageID: message.id, text: excerpt, to: sessionID)
                                 }
                                 .id(rowID(for: message.id))
+                                .background {
+                                    if message.role == .assistant {
+                                        GeometryReader { geometry in
+                                            Color.clear.preference(
+                                                key: AssistantMessageOffsetKey.self,
+                                                value: [message.id: geometry.frame(in: .named("chat-transcript")).minY]
+                                            )
+                                        }
+                                    }
+                                }
                             }
                             if isWorking {
                                 WorkingStatusView(
@@ -162,12 +172,21 @@ struct ChatView: View {
                         .padding(.horizontal, 16)
                         .padding(.vertical, 18)
                     }
+                    .coordinateSpace(name: "chat-transcript")
                     .scrollDismissesKeyboard(.interactively)
                     .accessibilityIdentifier("chat.transcript")
                     .onScrollPhaseChange { _, phase in
                         if phase == .interacting {
                             userHasScrolledTranscript = true
                             isFollowingLatest = false
+                            isNavigatingHistory = false
+                        }
+                    }
+                    .onPreferenceChange(AssistantMessageOffsetKey.self) { offsets in
+                        guard userHasScrolledTranscript, !isNavigatingHistory else { return }
+                        focusedAssistantID = assistantMessageIDs.min { lhs, rhs in
+                            abs((offsets[lhs] ?? .greatestFiniteMagnitude) - 18) <
+                                abs((offsets[rhs] ?? .greatestFiniteMagnitude) - 18)
                         }
                     }
                     .onChange(of: latestTranscriptRevision) {
@@ -252,11 +271,16 @@ struct ChatView: View {
         let ids = assistantMessageIDs
         guard !ids.isEmpty else { return }
         userHasScrolledTranscript = true
+        isNavigatingHistory = true
         let currentIndex = focusedAssistantID.flatMap { ids.firstIndex(of: $0) } ?? 0
         let targetIndex = min(ids.count - 1, currentIndex + 1)
         focusedAssistantID = ids[targetIndex]
         isFollowingLatest = targetIndex == ids.count - 1
         withAnimation(.snappy) { proxy.scrollTo(rowID(for: ids[targetIndex]), anchor: .top) }
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(500))
+            isNavigatingHistory = false
+        }
     }
 
     private func scrollToLatestContent(using proxy: ScrollViewProxy) {
@@ -270,6 +294,14 @@ struct ChatView: View {
                 proxy.scrollTo(target, anchor: pinsCurrentTurn ? .top : .bottom)
             }
         }
+    }
+}
+
+private struct AssistantMessageOffsetKey: PreferenceKey {
+    static let defaultValue: [String: CGFloat] = [:]
+
+    static func reduce(value: inout [String: CGFloat], nextValue: () -> [String: CGFloat]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, newest in newest })
     }
 }
 

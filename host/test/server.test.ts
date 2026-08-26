@@ -242,7 +242,7 @@ test("routes prompt modes, abort, history, responses, and tool events", async ()
   ].entries()) {
     const id = `request-${index}`;
     send(mobile, command[0] as string, command[1] as object, id);
-    const forwarded = await receive(runtime);
+    const forwarded = await receiveType(runtime, command[0] as string);
     assert.equal(forwarded.type, command[0]);
     assert.equal(forwarded.id, id);
     send(runtime, "runtime.response", { requestID: id, ok: true, result: command[0] === "session.history" ? { events: [], lastEntryID: "entry-2" } : undefined });
@@ -304,7 +304,7 @@ test("uses the session tree as the exact visibility boundary and derives missing
   send(mobile, "session.read", { sessionID: "visible-session" }, "visible-read");
   const readResponse = await receiveType(mobile, "session.response");
   assert.equal(readResponse.payload.ok, true);
-  const forwardedRead = await receive(active);
+  const forwardedRead = await receiveType(active, "session.read");
   assert.equal(forwardedRead.type, "session.read");
   const mobileReadSnapshot = await receiveType(mobile, "sessions.snapshot");
   assert.equal(mobileReadSnapshot.payload.sessions[0].unread, false);
@@ -389,6 +389,11 @@ test("runs the real Pi extension through broker registration, history, controls,
       getBranch: () => branch,
     },
     getContextUsage: () => ({ percent: 25 }),
+    ui: {
+      confirm: async () => false,
+      select: async () => undefined,
+      input: async () => undefined,
+    },
     abort: () => { aborted = true; },
     compact: () => { compacted = true; },
   } as unknown as ExtensionContext;
@@ -417,6 +422,18 @@ test("runs the real Pi extension through broker registration, history, controls,
     snapshot = await receiveType(mobile, "sessions.snapshot");
   }
   assert.ok(snapshot.payload.sessions.some((session: { id: string }) => session.id === "real-extension"));
+
+  const permission = context.ui.confirm("Permission required", "Allow this operation?");
+  const interaction = await receiveType(mobile, "session.interaction");
+  assert.equal(interaction.payload.kind, "confirm");
+  assert.equal(interaction.payload.title, "Permission required");
+  send(mobile, "session.interaction.respond", {
+    sessionID: "real-extension",
+    requestID: interaction.payload.requestID,
+    response: true,
+  }, "interaction-response");
+  assert.equal((await receiveType(mobile, "session.response")).id, "interaction-response");
+  assert.equal(await permission, true);
 
   send(mobile, "session.read", { sessionID: "real-extension" }, "real-read");
   assert.equal((await receiveType(mobile, "session.response")).payload.ok, true);
