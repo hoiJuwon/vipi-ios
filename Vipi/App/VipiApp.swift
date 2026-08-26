@@ -1,7 +1,131 @@
 import SwiftUI
+import UIKit
+import UserNotifications
+
+extension Notification.Name {
+    static let vipiPushTokenUpdated = Notification.Name("vipi.push-token-updated")
+    static let vipiOpenSession = Notification.Name("vipi.open-session")
+}
+
+enum PushAuthorizationState: String {
+    case unknown, notDetermined, denied, enabled
+
+    var label: String {
+        switch self {
+        case .unknown: "Checking…"
+        case .notDetermined: "Off"
+        case .denied: "Disabled in Settings"
+        case .enabled: "Enabled"
+        }
+    }
+}
+
+struct PushDeviceRegistration: Codable, Equatable {
+    let deviceToken: String
+    let environment: String
+}
+
+enum PushNotificationCoordinator {
+    private static let registrationKey = "vipi.apnsRegistration"
+    private static let pendingSessionKey = "vipi.pendingPushSession"
+
+    static var registration: PushDeviceRegistration? {
+        guard let data = UserDefaults.standard.data(forKey: registrationKey) else { return nil }
+        return try? JSONDecoder().decode(PushDeviceRegistration.self, from: data)
+    }
+
+    static func prepare() async -> PushAuthorizationState {
+        let status = await authorizationState()
+        if status == .enabled {
+            await MainActor.run { UIApplication.shared.registerForRemoteNotifications() }
+        }
+        return status
+    }
+
+    static func requestAuthorization() async -> PushAuthorizationState {
+        do {
+            let granted = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
+            if granted {
+                await MainActor.run { UIApplication.shared.registerForRemoteNotifications() }
+            }
+        } catch {}
+        return await authorizationState()
+    }
+
+    static func authorizationState() async -> PushAuthorizationState {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        switch settings.authorizationStatus {
+        case .notDetermined: return .notDetermined
+        case .denied: return .denied
+        case .authorized, .provisional, .ephemeral: return .enabled
+        @unknown default: return .unknown
+        }
+    }
+
+    static func store(deviceToken data: Data) {
+        let token = data.map { String(format: "%02x", $0) }.joined()
+        #if DEBUG
+        let environment = "sandbox"
+        #else
+        let environment = "production"
+        #endif
+        let value = PushDeviceRegistration(deviceToken: token, environment: environment)
+        if let encoded = try? JSONEncoder().encode(value) {
+            UserDefaults.standard.set(encoded, forKey: registrationKey)
+        }
+        NotificationCenter.default.post(name: .vipiPushTokenUpdated, object: nil)
+    }
+
+    static func open(sessionID: String) {
+        UserDefaults.standard.set(sessionID, forKey: pendingSessionKey)
+        NotificationCenter.default.post(name: .vipiOpenSession, object: sessionID)
+    }
+
+    static func consumePendingSessionID() -> String? {
+        let value = UserDefaults.standard.string(forKey: pendingSessionKey)
+        UserDefaults.standard.removeObject(forKey: pendingSessionKey)
+        return value
+    }
+}
+
+final class VipiAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        UNUserNotificationCenter.current().delegate = self
+        return true
+    }
+
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        PushNotificationCoordinator.store(deviceToken: deviceToken)
+    }
+
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        // The Settings screen reports authorization and host configuration;
+        // device-specific APNs errors remain non-fatal.
+    }
+
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification
+    ) async -> UNNotificationPresentationOptions {
+        [.banner, .sound]
+    }
+
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse
+    ) async {
+        if let sessionID = response.notification.request.content.userInfo["sessionID"] as? String {
+            PushNotificationCoordinator.open(sessionID: sessionID)
+        }
+    }
+}
 
 @main
 struct VipiApp: App {
+    @UIApplicationDelegateAdaptor(VipiAppDelegate.self) private var appDelegate
     @State private var store: AppStore
     @State private var showsSplash: Bool
     private let holdsSplashForPreview: Bool
@@ -40,6 +164,22 @@ struct VipiApp: App {
             .statusBarHidden(showsSplash)
             .persistentSystemOverlays(showsSplash ? .hidden : .automatic)
             .task { await store.connectIfConfigured() }
+            .task {
+                guard !CommandLine.arguments.contains("--uitesting") else { return }
+                _ = await PushNotificationCoordinator.prepare()
+                await store.registerPushDeviceIfAvailable()
+                if let sessionID = PushNotificationCoordinator.consumePendingSessionID() {
+                    store.requestSessionFromNotification(sessionID)
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .vipiPushTokenUpdated)) { _ in
+                Task { await store.registerPushDeviceIfAvailable() }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .vipiOpenSession)) { notification in
+                if let sessionID = notification.object as? String {
+                    store.requestSessionFromNotification(sessionID)
+                }
+            }
             .task {
                 guard showsSplash, !holdsSplashForPreview else { return }
                 try? await Task.sleep(for: .milliseconds(1_650))

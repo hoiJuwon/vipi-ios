@@ -67,3 +67,7 @@ struct PromptPayload: Encodable {
 struct RenamePayload: Encodable { let sessionID: String; let name: String }
 struct WorkspaceBrowsePayload: Encodable { let path: String? }
 struct SessionCreatePayload: Encodable { let cwd: String }
+struct PushRegistrationPayload: Encodable {
+    let deviceToken: String
+    let environment: String
+}

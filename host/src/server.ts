@@ -11,6 +11,7 @@ import { createPairingPayload } from "./pairing.js";
 import { mobileActivityForTool, normalizeHistory } from "./normalization.js";
 import { readSessionBranch } from "./session-history.js";
 import { browseWorkspace, launchSession, listWorkspaces } from "./workspaces.js";
+import { pushStatus, registerPushDevice, sendSessionCompletedPush, unregisterPushDevice } from "./push.js";
 
 const host = process.env.VIPI_HOST ?? "127.0.0.1";
 const port = Number(process.env.VIPI_PORT ?? "8765");
@@ -58,6 +59,7 @@ const server = createServer((request, response) => {
       sessions: mergedSessions().length,
       mobileClients: mobileClients.size,
       runtimes: runtimes.size,
+      push: pushStatus(),
     }));
     return;
   }
@@ -232,6 +234,10 @@ wss.on("connection", (socket) => {
         if (session?.id) {
           liveSessions.set(session.id, session);
           if (session.phase === "working" && previousPhase !== "working") pendingAssistantEvents.delete(session.id);
+          if (previousPhase === "working" && session.phase === "completed") {
+            const treeSession = readTmuxRegistry().find((candidate) => candidate.id === session.id);
+            void sendSessionCompletedPush({ id: session.id, name: treeSession?.name ?? session.name }).catch(() => {});
+          }
         }
         broadcast("sessions.snapshot", { sessions: mergedSessions() });
         if (session?.id && session.phase !== "working") {
@@ -262,6 +268,34 @@ wss.on("connection", (socket) => {
 
     if (message.type === "sessions.list") {
       socket.send(JSON.stringify(envelope("sessions.snapshot", { sessions: mergedSessions() }, message.id, ++sequence)));
+      return;
+    }
+    if (message.type === "push.status") {
+      socket.send(JSON.stringify(envelope("session.response", {
+        requestID: message.id, ok: true, result: pushStatus(),
+      }, message.id, ++sequence)));
+      return;
+    }
+    if (message.type === "push.register") {
+      try {
+        registerPushDevice(message.payload?.deviceToken, message.payload?.environment);
+        socket.send(JSON.stringify(envelope("session.response", {
+          requestID: message.id, ok: true, result: pushStatus(),
+        }, message.id, ++sequence)));
+      } catch (error) {
+        socket.send(JSON.stringify(envelope("session.response", {
+          requestID: message.id,
+          ok: false,
+          result: { error: error instanceof Error ? error.message : "Push registration failed." },
+        }, message.id, ++sequence)));
+      }
+      return;
+    }
+    if (message.type === "push.unregister") {
+      unregisterPushDevice(message.payload?.deviceToken);
+      socket.send(JSON.stringify(envelope("session.response", {
+        requestID: message.id, ok: true, result: pushStatus(),
+      }, message.id, ++sequence)));
       return;
     }
     if (message.type === "workspaces.list") {

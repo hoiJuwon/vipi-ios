@@ -283,6 +283,7 @@ final class VipiUITests: XCTestCase {
         XCTAssertTrue(scrollToExistence(rotate))
         XCTAssertEqual(rotate.label, "Rotate device token")
         XCTAssertFalse(rotate.isEnabled)
+        XCTAssertTrue(scrollToExistence(app.staticTexts["Answer alerts"]))
     }
 
     private func scrollToHittable(_ element: XCUIElement) -> Bool {

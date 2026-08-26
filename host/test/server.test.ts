@@ -163,6 +163,33 @@ test("lists registered workspaces, browses safe directories, and starts a tmux P
   mobile.close();
 });
 
+test("registers APNs devices without exposing credentials and validates tokens", async () => {
+  const mobile = await connect();
+  send(mobile, "auth.authenticate", { token }, "push-auth");
+  await receiveType(mobile, "auth.ok");
+  await receiveType(mobile, "sessions.snapshot");
+
+  const deviceToken = "a".repeat(64);
+  send(mobile, "push.register", { deviceToken, environment: "sandbox" }, "push-register");
+  const registered = await receiveType(mobile, "session.response");
+  assert.equal(registered.payload.ok, true);
+  assert.equal(registered.payload.result.configured, false);
+  assert.equal(registered.payload.result.devices, 1);
+  assert.equal(JSON.stringify(registered).includes(deviceToken), false);
+  const deviceFile = join(directory, "vipi", "apns-devices.json");
+  assert.equal((await stat(deviceFile)).mode & 0o777, 0o600);
+
+  send(mobile, "push.register", { deviceToken: "invalid", environment: "sandbox" }, "push-invalid");
+  const invalid = await receiveType(mobile, "session.response");
+  assert.equal(invalid.payload.ok, false);
+
+  send(mobile, "push.unregister", { deviceToken }, "push-unregister");
+  const unregistered = await receiveType(mobile, "session.response");
+  assert.equal(unregistered.payload.ok, true);
+  assert.equal(unregistered.payload.result.devices, 0);
+  mobile.close();
+});
+
 test("normalizes final messages and redacts tool payloads from mobile DTOs", () => {
   const message = { role: "assistant", content: [{ type: "text", text: "hello" }], timestamp: 1_700_000_000_000 };
   assert.deepEqual(normalizeMessage(message, "m1", true), {

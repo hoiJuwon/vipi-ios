@@ -29,6 +29,7 @@ targets:
       base:
         PRODUCT_NAME: Vipi
         TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_ENTITLEMENTS: Vipi/Vipi.entitlements
     scheme:
       testTargets:
         - VipiTests

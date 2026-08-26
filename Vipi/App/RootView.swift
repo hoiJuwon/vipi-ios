@@ -43,7 +43,11 @@ struct VipiSplashView: View {
 }
 
 struct RootView: View {
+    private enum Tab: Hashable { case sessions, settings }
+
     @Environment(AppStore.self) private var store
+    @State private var selectedTab: Tab = .sessions
+    @State private var sessionPath: [RemoteSession] = []
 
     var body: some View {
         Group {
@@ -68,21 +72,33 @@ struct RootView: View {
             }
         }
         .animation(.snappy, value: store.pendingInteractions.first?.requestID)
+        .onChange(of: store.requestedNotificationSessionID) { _, _ in openNotificationSessionIfAvailable() }
+        .onChange(of: store.sessions.map(\.id)) { _, _ in openNotificationSessionIfAvailable() }
     }
 
     private var tabs: some View {
-        TabView {
-            NavigationStack {
+        TabView(selection: $selectedTab) {
+            NavigationStack(path: $sessionPath) {
                 SessionListView()
                     .navigationDestination(for: RemoteSession.self) { session in
                         ChatView(sessionID: session.id)
                     }
             }
             .tabItem { Label("Sessions", systemImage: "bubble.left.and.bubble.right.fill") }
+            .tag(Tab.sessions)
 
             NavigationStack { SettingsView() }
                 .tabItem { Label("Settings", systemImage: "slider.horizontal.3") }
+                .tag(Tab.settings)
         }
         .tint(VipiTheme.accent)
+    }
+
+    private func openNotificationSessionIfAvailable() {
+        guard let sessionID = store.requestedNotificationSessionID,
+              let session = store.session(id: sessionID) else { return }
+        selectedTab = .sessions
+        sessionPath = [session]
+        store.consumeNotificationSessionRequest()
     }
 }

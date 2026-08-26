@@ -30,6 +30,10 @@ final class AppStore {
     var sessionCreationSucceeded = false
     var sessionCreationError: String?
     var startingSessionPath: String?
+    var pushHostConfigured = false
+    var pushRegisteredDevices = 0
+    var pushRegistrationError: String?
+    var requestedNotificationSessionID: String?
 
     private let broker: BrokerClient
     private let allowsInsecureLocalhostForUITesting: Bool
@@ -42,6 +46,7 @@ final class AppStore {
     private var pendingSessionCreationRequests: [String: SessionCreationRequest] = [:]
     private var latestWorkspaceBrowseRequestID: String?
     private var startingSessionPaneID: String?
+    private var pendingPushRequests: Set<String> = []
 
     init(
         broker: BrokerClient = BrokerClient(),
@@ -469,6 +474,41 @@ final class AppStore {
         }
     }
 
+    func registerPushDeviceIfAvailable() async {
+        guard connectionState == .connected,
+              let registration = PushNotificationCoordinator.registration else { return }
+        do {
+            let requestID = try await broker.send(
+                type: "push.register",
+                payload: PushRegistrationPayload(
+                    deviceToken: registration.deviceToken,
+                    environment: registration.environment
+                )
+            )
+            pendingPushRequests.insert(requestID)
+        } catch {
+            pushRegistrationError = error.localizedDescription
+        }
+    }
+
+    func refreshPushStatus() async {
+        guard connectionState == .connected else { return }
+        do {
+            let requestID = try await broker.send(type: "push.status", payload: EmptyPayload())
+            pendingPushRequests.insert(requestID)
+        } catch {
+            pushRegistrationError = error.localizedDescription
+        }
+    }
+
+    func requestSessionFromNotification(_ sessionID: String) {
+        requestedNotificationSessionID = sessionID
+    }
+
+    func consumeNotificationSessionRequest() {
+        requestedNotificationSessionID = nil
+    }
+
     private func demoWorkspaceDirectory(at path: String) -> WorkspaceDirectoryListing {
         let known = Set(sessions.map(\.cwd) + [
             "/Users/choijuwon/Desktop",
@@ -679,6 +719,7 @@ final class AppStore {
             UserDefaults.standard.set(host, forKey: "vipi.host")
             try? KeychainStore.saveToken(token)
             persistSimulatorToken(token)
+            await registerPushDeviceIfAvailable()
             return
         }
         if envelope.type == "auth.rotated",
@@ -740,6 +781,17 @@ final class AppStore {
             return
         }
         if envelope.type == "session.response", let payload = envelope.payload {
+            if let id = envelope.id, pendingPushRequests.remove(id) != nil {
+                guard let response: PushCommandResponse = decode(payload), response.ok,
+                      let result = response.result else {
+                    pushRegistrationError = commandResponseError(payload)
+                    return
+                }
+                pushHostConfigured = result.configured
+                pushRegisteredDevices = result.devices
+                pushRegistrationError = nil
+                return
+            }
             if let id = envelope.id,
                let request = pendingSessionCreationRequests.removeValue(forKey: id) {
                 await reduceSessionCreationResponse(payload, requestID: id, request: request)
@@ -762,6 +814,10 @@ final class AppStore {
         }
         if envelope.type == "error", case .object(let payload) = envelope.payload,
            case .string(let code) = payload["code"] {
+            if let id = envelope.id, pendingPushRequests.remove(id) != nil {
+                pushRegistrationError = code
+                return
+            }
             if let id = envelope.id,
                let request = pendingSessionCreationRequests.removeValue(forKey: id) {
                 switch request {
@@ -794,6 +850,17 @@ final class AppStore {
         UserDefaults.standard.set(value, forKey: "vipi.simulatorToken")
         #endif
     }
+}
+
+private struct PushCommandResponse: Decodable {
+    let ok: Bool
+    let result: PushCommandResult?
+}
+
+private struct PushCommandResult: Decodable {
+    let configured: Bool
+    let devices: Int
+    let topic: String
 }
 
 private struct WorkspaceListCommandResponse: Decodable {

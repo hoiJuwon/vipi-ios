@@ -158,6 +158,7 @@ Client commands currently wired:
 - `sessions.list`
 - `workspaces.list`, `workspaces.browse`
 - `session.create`
+- `push.status`, `push.register`, `push.unregister`
 - `session.prompt` (`prompt`, `steer`, `followUp`)
 - `session.abort`
 - `session.history`
@@ -172,6 +173,17 @@ Runtime events currently forwarded:
 Tool arguments, partial output, results, files, and command output are discarded by the extension/host and are not part of the mobile history DTO.
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for ownership and roadmap details.
+
+## Private APNs setup
+
+Vipi can alert registered iPhones when a Pi runtime moves from `working` to `completed`. The app target uses the canonical explicit bundle ID `com.abovetech.vipi.choijuwon` and the Push Notifications entitlement.
+
+1. Enable Push Notifications for that explicit App ID and install an updated iOS development provisioning profile.
+2. Create an APNs signing key in the Apple Developer portal and download its `.p8` file once.
+3. Run `./scripts/configure-apns.sh /path/to/AuthKey_KEYID.p8 KEYID12345`. It copies the key privately, writes `~/.pi/agent/vipi/apns.json` with mode `0600`, and restarts the host. [`host/apns.example.json`](host/apns.example.json) documents the same fields for manual setup.
+4. Enable **Answer alerts** in the app's Settings tab.
+
+The host stores APNs device tokens in a private `0600` registry. Notifications include only the session name and a generic completion message; assistant answer text is never sent to APNs.
 
 ## License
 

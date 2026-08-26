@@ -83,6 +83,7 @@ if ! xcodebuild \\
   DEVELOPMENT_TEAM="\$TEAM" \\
   CODE_SIGN_STYLE=Automatic \\
   "CODE_SIGN_IDENTITY=Apple Development" \\
+  -allowProvisioningUpdates \\
   build >"\$LOG" 2>&1; then
   echo build-failed > "\$STATUS"; exit 1
 fi

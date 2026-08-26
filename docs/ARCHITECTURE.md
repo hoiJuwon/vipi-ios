@@ -39,6 +39,8 @@ Photo attachments use an authenticated `POST /attachments` endpoint on the exist
 
 Authenticated `session.create` starts a brand-new regular Pi process in a tmux window at the selected canonical directory. The host writes the same provisional registry row used by `pi-session-tree`, then releases a short startup gate so the session-tree extension atomically replaces it with Pi's real session ID and JSONL path. This creates a new writer rather than attaching a second writer to any existing JSONL session.
 
+Answer-completion alerts use direct APNs HTTP/2 delivery from the loopback host. iOS registers a sandbox or production device token only after notification permission is granted and transmits it over the authenticated Vipi socket. The host stores tokens in a private `0600` file, signs short-lived ES256 provider JWTs from a local `.p8` key, removes APNs-expired devices, and sends only a session name plus generic completion text on the exact `working → completed` transition. Tapping an alert routes to the corresponding session after the registry snapshot is available.
+
 ## Deliberate future scope
 
 Offline saved-session ownership remains out of scope. It requires an explicit ownership lease before any second process may resume a JSONL session.

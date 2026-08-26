@@ -76,6 +76,16 @@ final class SessionModelTests: XCTestCase {
         XCTAssertTrue(succeeded)
     }
 
+    func testNotificationSessionRequestPersistsUntilNavigationConsumesIt() async {
+        let store = await AppStore(startsInDemoMode: true)
+        await store.requestSessionFromNotification("mobile")
+        let requested = await store.requestedNotificationSessionID
+        XCTAssertEqual(requested, "mobile")
+        await store.consumeNotificationSessionRequest()
+        let consumed = await store.requestedNotificationSessionID
+        XCTAssertNil(consumed)
+    }
+
     func testWorkspaceGroupingKeepsWorkingWorkspaceFirst() async {
         let store = await AppStore(startsInDemoMode: true)
         let groups = await store.workspaceGroups
