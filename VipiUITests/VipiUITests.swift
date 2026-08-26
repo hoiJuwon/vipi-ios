@@ -45,6 +45,25 @@ final class VipiUITests: XCTestCase {
         XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label == %@", "작업 기록")).count, 0)
     }
 
+    func testComposerAddMenuInsertsGoalCommand() {
+        let session = app.buttons["session.hello"]
+        XCTAssertTrue(scrollToHittable(session))
+        session.tap()
+
+        let composer = app.textFields["chat.composer"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        let add = app.buttons["chat.add"]
+        XCTAssertTrue(add.isHittable)
+        XCTAssertEqual(add.frame.midY, composer.frame.midY, accuracy: 1)
+        XCTAssertGreaterThanOrEqual(add.frame.width, 44)
+        XCTAssertGreaterThanOrEqual(add.frame.height, 44)
+        add.tap()
+        let goal = app.buttons["Goal"]
+        XCTAssertTrue(goal.waitForExistence(timeout: 3))
+        goal.tap()
+        XCTAssertTrue((composer.value as? String)?.hasPrefix("/goal") == true)
+    }
+
     func testSubmittedPromptMovesToTopOfResponseViewport() {
         let session = app.buttons["session.hello"]
         XCTAssertTrue(scrollToHittable(session))
@@ -134,6 +153,11 @@ final class VipiUITests: XCTestCase {
         let composer = app.textFields["chat.composer"]
         XCTAssertEqual(composer.label, "Message Pi")
         XCTAssertTrue(composer.isHittable)
+        let add = app.buttons["chat.add"]
+        XCTAssertTrue(add.isHittable)
+        XCTAssertEqual(add.frame.midY, composer.frame.midY, accuracy: 1)
+        XCTAssertGreaterThanOrEqual(add.frame.width, 44)
+        XCTAssertGreaterThanOrEqual(add.frame.height, 44)
         let stop = app.buttons["chat.stop"]
         XCTAssertEqual(stop.label, "Stop current run")
         XCTAssertTrue(stop.isEnabled)

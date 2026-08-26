@@ -34,16 +34,22 @@ struct ChatView: View {
                 phase: session?.phase ?? .offline,
                 queuedPrompts: store.queuedPrompts(for: sessionID),
                 annotations: store.annotations(for: sessionID),
+                imageAttachments: store.draftImages(for: sessionID),
                 interaction: store.pendingInteractions.first(where: { $0.sessionID == sessionID }),
                 interactionSessionName: session?.name,
                 onRemoveAnnotation: { store.removeAnnotation($0, from: sessionID) },
+                onAddImage: { store.addDraftImage($0, to: sessionID) },
+                onRemoveImage: { store.removeDraftImage($0, from: sessionID) },
+                onPhotoImportError: { store.commandError = $0 },
                 onRespondToInteraction: { interaction, response in
                     Task { await store.respond(to: interaction, with: response) }
                 }
             ) { mode in
                 let text = store.draft(for: sessionID).trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !text.isEmpty else { return }
+                let images = store.draftImages(for: sessionID)
+                guard !text.isEmpty || !images.isEmpty else { return }
                 store.setDraft("", for: sessionID)
+                store.clearDraftImages(for: sessionID)
                 if mode == .prompt {
                     pinsSubmittedTurn = true
                     isFollowingLatest = true
@@ -51,11 +57,19 @@ struct ChatView: View {
                 }
                 let annotations = store.annotations(for: sessionID)
                 Task {
-                    let sent = await store.send(text: text, annotations: annotations, to: sessionID, delivery: mode)
+                    let sent = await store.send(
+                        text: text,
+                        annotations: annotations,
+                        images: images,
+                        to: sessionID,
+                        delivery: mode
+                    )
                     if sent {
                         store.clearAnnotations(for: sessionID)
-                    } else if mode == .prompt {
-                        pinsSubmittedTurn = false
+                    } else {
+                        if store.draft(for: sessionID).isEmpty { store.setDraft(text, for: sessionID) }
+                        store.restoreDraftImages(images, for: sessionID)
+                        if mode == .prompt { pinsSubmittedTurn = false }
                     }
                 }
             } onStop: {
@@ -235,7 +249,9 @@ struct ChatView: View {
     private func rowID(for messageID: String) -> String { "message-\(messageID)" }
 
     private var latestTranscriptRevision: String {
-        let last = displayMessages.last.map { "\($0.id):\($0.text):\($0.isStreaming)" } ?? "empty"
+        let last = displayMessages.last.map {
+            "\($0.id):\($0.text):\($0.attachments.map(\.id).joined(separator: ",")):\($0.isStreaming)"
+        } ?? "empty"
         return "\(last):\(isWorking):\(store.progressActivity(for: sessionID).rawValue)"
     }
 
@@ -431,18 +447,58 @@ private struct ChatMessageRow: View {
         if message.role == .user {
             HStack {
                 Spacer(minLength: 44)
-                Text(message.text)
-                    .font(.body)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 15)
-                    .padding(.vertical, 11)
-                    .background(VipiTheme.userBubble, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                VStack(alignment: .trailing, spacing: 8) {
+                    if !message.attachments.isEmpty {
+                        SentImageGrid(attachments: message.attachments)
+                    }
+                    if !message.text.isEmpty {
+                        Text(message.text)
+                            .font(.body)
+                            .foregroundStyle(.white)
+                    }
+                }
+                .padding(.horizontal, message.attachments.isEmpty ? 15 : 8)
+                .padding(.vertical, message.attachments.isEmpty ? 11 : 8)
+                .background(VipiTheme.userBubble, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
         } else {
             MarkdownMessageView(source: message.text, messageID: message.id, onAddToChat: onAddToChat)
                 .foregroundStyle(VipiTheme.primary)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+}
+
+private struct SentImageGrid: View {
+    let attachments: [ChatImageAttachment]
+
+    private let columns = [
+        GridItem(.flexible(), spacing: 4),
+        GridItem(.flexible(), spacing: 4),
+    ]
+
+    var body: some View {
+        LazyVGrid(columns: attachments.count == 1 ? [GridItem(.flexible())] : columns, spacing: 4) {
+            ForEach(attachments) { attachment in
+                Group {
+                    if let data = ChatImageCache.data(for: attachment), let image = UIImage(data: data) {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
+                    } else {
+                        ZStack {
+                            Color.white.opacity(0.08)
+                            Image(systemName: "photo")
+                                .foregroundStyle(.white.opacity(0.72))
+                        }
+                    }
+                }
+                .frame(width: attachments.count == 1 ? 220 : 106, height: attachments.count == 1 ? 180 : 106)
+                .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(attachments.count == 1 ? "1 attached photo" : "\(attachments.count) attached photos")
     }
 }
 

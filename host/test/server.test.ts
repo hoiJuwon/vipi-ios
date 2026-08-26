@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { spawn, type ChildProcess } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
@@ -114,6 +115,19 @@ test("normalizes final messages and redacts tool payloads from mobile DTOs", () 
   assert.equal(tool?.kind, "progress");
   assert.equal(tool?.kind === "progress" ? tool.activity : undefined, "thinking");
   assert.equal("detail" in (tool ?? {}), false);
+  const imageData = Buffer.from("image bytes").toString("base64");
+  const image = normalizeMessage({
+    role: "user",
+    content: [{ type: "image", data: imageData, mimeType: "image/jpeg" }],
+    timestamp: 1_700_000_000_000,
+  }, "image-message", false);
+  assert.equal(image?.kind === "message" ? image.text : undefined, "");
+  assert.deepEqual(image?.kind === "message" ? image.attachments : undefined, [{
+    id: createHash("sha256").update("image bytes").digest("hex"),
+    mimeType: "image/jpeg",
+  }]);
+  assert.equal(JSON.stringify(image).includes(imageData), false);
+  assert.equal(normalizeMessage({ role: "user", content: "[GOAL CONFIRMATION focus=goal]\ninternal", timestamp: 1 }, "goal-internal", false), undefined);
   const history = normalizeHistory([
     { id: "e1", parentId: null, timestamp: "2026-08-24T00:00:00Z", type: "message", message: { role: "user", content: "first", timestamp: 1 } },
     { id: "e2", parentId: "e1", timestamp: "2026-08-24T00:00:01Z", type: "message", message: {
@@ -252,6 +266,10 @@ test("routes prompt modes, abort, history, responses, and tool events", async ()
     assert.equal(response.payload.ok, true);
   }
 
+  send(mobile, "session.prompt", { sessionID: "controls", text: "/goal test", delivery: "prompt" }, "stale-goal-runtime");
+  const staleGoal = await receiveType(mobile, "error");
+  assert.equal(staleGoal.payload.code, "RUNTIME_UPDATE_REQUIRED");
+
   send(runtime, "runtime.event", { sessionID: "controls", event: {
     kind: "tool", toolCallID: "tool-1", name: "read", state: "running", summary: "read running",
   } });
@@ -371,7 +389,7 @@ test("runs the real Pi extension through broker registration, history, controls,
   process.env.PI_CODING_AGENT_DIR = directory;
   process.env.VIPI_BROKER_URL = `ws://127.0.0.1:${port}/ws`;
   const handlers = new Map<string, (event: any, context: ExtensionContext) => Promise<any>>();
-  const delivered: Array<{ text: string; delivery?: string }> = [];
+  const delivered: Array<{ content: unknown; delivery?: string; expandPromptTemplates?: boolean }> = [];
   let aborted = false;
   let compacted = false;
   const branch: any[] = [
@@ -382,7 +400,7 @@ test("runs the real Pi extension through broker registration, history, controls,
   writeFileSync(realSessionFile, branch.map((entry) => JSON.stringify(entry)).join("\n"));
   const context = {
     cwd: "/tmp/real-extension",
-    model: { id: "fixture-model", name: "Fixture Model" },
+    model: { id: "fixture-model", name: "Fixture Model", input: ["text", "image"] },
     sessionManager: {
       getSessionId: () => "real-extension",
       getSessionFile: () => realSessionFile,
@@ -403,7 +421,11 @@ test("runs the real Pi extension through broker registration, history, controls,
     events: { emit: (name: string, payload: unknown) => emitted.push({ name, payload }) },
     getSessionName: () => "Real / Extension",
     getThinkingLevel: () => "medium",
-    sendUserMessage: (text: string, options?: { deliverAs?: string }) => delivered.push({ text, ...(options?.deliverAs ? { delivery: options.deliverAs } : {}) }),
+    sendUserMessage: (content: unknown, options?: { deliverAs?: string; expandPromptTemplates?: boolean }) => delivered.push({
+      content,
+      ...(options?.deliverAs ? { delivery: options.deliverAs } : {}),
+      ...(options?.expandPromptTemplates ? { expandPromptTemplates: true } : {}),
+    }),
   } as unknown as ExtensionAPI;
   writeFileSync(join(directory, "tmux-session-tree.json"), JSON.stringify({ entries: [{
     piSessionId: "real-extension", name: "Real / Extension", cwd: context.cwd,
@@ -452,7 +474,41 @@ test("runs the real Pi extension through broker registration, history, controls,
     send(mobile, "session.prompt", { sessionID: "real-extension", text: id, delivery }, `real-${id}`);
     await receiveType(mobile, "session.response");
   }
-  assert.deepEqual(delivered, [{ text: "prompt" }, { text: "steer", delivery: "steer" }, { text: "follow", delivery: "followUp" }]);
+  assert.deepEqual(delivered, [{ content: "prompt" }, { content: "steer", delivery: "steer" }, { content: "follow", delivery: "followUp" }]);
+
+  send(mobile, "session.prompt", { sessionID: "real-extension", text: "/goal ship the feature", delivery: "prompt" }, "real-goal");
+  await receiveType(mobile, "session.response");
+  assert.deepEqual(delivered.at(-1), { content: "/goal ship the feature", expandPromptTemplates: true });
+
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0xff, 0xd9]);
+  const jpegDigest = createHash("sha256").update(jpeg).digest("hex");
+  const uploadResponse = await fetch(`http://127.0.0.1:${port}/attachments`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${token}`,
+      "content-type": "image/jpeg",
+      "x-vipi-session-id": "real-extension",
+      "x-vipi-content-sha256": jpegDigest,
+    },
+    body: jpeg,
+  });
+  assert.equal(uploadResponse.status, 201);
+  const uploaded = await uploadResponse.json() as { id: string; digest: string; mimeType: string };
+  assert.equal(uploaded.digest, jpegDigest);
+  send(mobile, "session.prompt", {
+    sessionID: "real-extension",
+    text: "describe this",
+    delivery: "prompt",
+    attachments: [{ id: uploaded.id }],
+  }, "real-photo");
+  await receiveType(mobile, "session.response");
+  assert.deepEqual(delivered.at(-1), {
+    content: [
+      { type: "text", text: "describe this" },
+      { type: "image", data: jpeg.toString("base64"), mimeType: "image/jpeg" },
+    ],
+  });
+  await assert.rejects(stat(join(directory, "vipi", "attachments", `${uploaded.id}.image`)));
 
   send(mobile, "session.prompt", {
     sessionID: "real-extension",
@@ -461,7 +517,7 @@ test("runs the real Pi extension through broker registration, history, controls,
     annotations: [{ messageID: "answer-1", text: "selected assistant excerpt" }],
   }, "real-annotated");
   await receiveType(mobile, "session.response");
-  assert.deepEqual(delivered.at(-1), { text: "use this reference" });
+  assert.deepEqual(delivered.at(-1), { content: "use this reference" });
   const annotationContext = await handlers.get("before_agent_start")?.({ type: "before_agent_start", prompt: "use this reference" }, context);
   assert.equal(annotationContext.message.display, false);
   assert.equal(annotationContext.message.customType, "vipi-annotations");

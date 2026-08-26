@@ -15,6 +15,7 @@ final class AppStore {
     var showingSettings = false
     var activityItems: [ActivityItem] = []
     var draftsBySession: [String: String] = [:]
+    var draftImagesBySession: [String: [DraftImageAttachment]] = [:]
     var annotationsBySession: [String: [ChatAnnotation]] = [:]
     var pendingInteractions: [RemoteInteraction] = []
     var queuedPromptsBySession: [String: [QueuedPrompt]] = [:]
@@ -79,6 +80,7 @@ final class AppStore {
     func branches(for id: String) -> [BranchNode] { branchesBySession[id] ?? [] }
     func draft(for id: String) -> String { draftsBySession[id] ?? "" }
     func annotations(for id: String) -> [ChatAnnotation] { annotationsBySession[id] ?? [] }
+    func draftImages(for id: String) -> [DraftImageAttachment] { draftImagesBySession[id] ?? [] }
     func queuedPrompts(for id: String) -> [QueuedPrompt] { queuedPromptsBySession[id] ?? [] }
     func progressActivity(for id: String) -> ProgressActivity { progressBySession[id] ?? .thinking }
     func setDraft(_ draft: String, for id: String) {
@@ -87,6 +89,28 @@ final class AppStore {
         } else {
             draftsBySession[id] = draft
         }
+    }
+    func addDraftImage(_ attachment: DraftImageAttachment, to sessionID: String) {
+        var attachments = draftImagesBySession[sessionID, default: []]
+        guard attachments.count < 4, !attachments.contains(where: { $0.id == attachment.id }) else { return }
+        do {
+            try ChatImageCache.store(attachment)
+            attachments.append(attachment)
+            draftImagesBySession[sessionID] = attachments
+        } catch {
+            commandError = "The selected photo could not be stored: \(error.localizedDescription)"
+        }
+    }
+    func removeDraftImage(_ attachmentID: String, from sessionID: String) {
+        draftImagesBySession[sessionID]?.removeAll { $0.id == attachmentID }
+        if draftImagesBySession[sessionID]?.isEmpty == true { draftImagesBySession.removeValue(forKey: sessionID) }
+    }
+    func clearDraftImages(for sessionID: String) {
+        draftImagesBySession.removeValue(forKey: sessionID)
+    }
+    func restoreDraftImages(_ attachments: [DraftImageAttachment], for sessionID: String) {
+        guard !attachments.isEmpty else { return }
+        draftImagesBySession[sessionID] = attachments
     }
     func addAnnotation(messageID: String, text: String, to sessionID: String) {
         let excerpt = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(4_000))
@@ -211,8 +235,20 @@ final class AppStore {
     }
 
     @discardableResult
-    func send(text: String, annotations: [ChatAnnotation] = [], to sessionID: String, delivery: PromptDelivery) async -> Bool {
-        let message = ChatMessage(id: UUID().uuidString, role: .user, text: text, timestamp: .now)
+    func send(
+        text: String,
+        annotations: [ChatAnnotation] = [],
+        images: [DraftImageAttachment] = [],
+        to sessionID: String,
+        delivery: PromptDelivery
+    ) async -> Bool {
+        let message = ChatMessage(
+            id: UUID().uuidString,
+            role: .user,
+            text: text,
+            timestamp: .now,
+            attachments: images.map(\.chatAttachment)
+        )
         if connectionState == .demo {
             if delivery == .followUp {
                 enqueuePrompt(text, for: sessionID)
@@ -227,7 +263,20 @@ final class AppStore {
             return false
         }
         do {
-            _ = try await broker.send(type: "session.prompt", payload: PromptPayload(sessionID: sessionID, text: text, delivery: delivery, annotations: annotations))
+            var uploaded: [UploadedAttachment] = []
+            for image in images {
+                uploaded.append(try await broker.uploadAttachment(image, sessionID: sessionID))
+            }
+            _ = try await broker.send(
+                type: "session.prompt",
+                payload: PromptPayload(
+                    sessionID: sessionID,
+                    text: text,
+                    delivery: delivery,
+                    annotations: annotations,
+                    attachments: uploaded.map { PromptAttachmentReference(id: $0.id) }
+                )
+            )
             if delivery == .followUp {
                 enqueuePrompt(text, for: sessionID)
             } else {
@@ -348,7 +397,8 @@ final class AppStore {
                 role: role,
                 text: text,
                 timestamp: event.timestamp ?? .now,
-                isStreaming: event.streaming ?? false
+                isStreaming: event.streaming ?? false,
+                attachments: event.attachments ?? []
             )
             var messages = messagesBySession[sessionID, default: []]
             let replacementIndex = event.replacesMessageID.flatMap { replacedID in
@@ -360,7 +410,9 @@ final class AppStore {
                 abs($0.timestamp.timeIntervalSince(message.timestamp)) < 5
             })
             if let index = replacementIndex ?? stableIndex ?? semanticIndex {
-                messages[index] = message
+                var replacement = message
+                if replacement.attachments.isEmpty { replacement.attachments = messages[index].attachments }
+                messages[index] = replacement
             } else { messages.append(message) }
             messagesBySession[sessionID] = messages
             if message.role == .user { dequeuePrompt(matching: message.text, for: sessionID) }
@@ -555,6 +607,7 @@ private struct NormalizedEvent: Decodable {
     let streaming: Bool?
     let entryID: String?
     let replacesMessageID: String?
+    let attachments: [ChatImageAttachment]?
     let activity: ProgressActivity?
 }
 

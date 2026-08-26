@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 @testable import Vipi
 
@@ -63,6 +64,31 @@ final class SessionModelTests: XCTestCase {
         XCTAssertEqual(store.session(id: "open-session")?.unread, false)
     }
 
+    func testPhotoAttachmentPreparationDownsamplesAndProducesJPEG() throws {
+        let source = UIGraphicsImageRenderer(size: CGSize(width: 3_000, height: 1_500)).image { context in
+            UIColor.systemBlue.setFill()
+            context.cgContext.fill(CGRect(x: 0, y: 0, width: 3_000, height: 1_500))
+        }
+        let sourceData = try XCTUnwrap(source.pngData())
+        let jpeg = try XCTUnwrap(PhotoAttachmentProcessor.jpegData(from: sourceData, maxPixelSize: 512))
+        let result = try XCTUnwrap(UIImage(data: jpeg))
+        XCTAssertEqual(jpeg.prefix(3), Data([0xff, 0xd8, 0xff]))
+        XCTAssertLessThanOrEqual(max(result.size.width, result.size.height), 512)
+        XCTAssertLessThan(jpeg.count, sourceData.count)
+    }
+
+    @MainActor func testImageDraftsRemainPerSessionAndDeduplicate() {
+        let store = AppStore()
+        let attachment = DraftImageAttachment(data: Data([0xff, 0xd8, 0xff, 0xd9]))
+        store.addDraftImage(attachment, to: "session-a")
+        store.addDraftImage(attachment, to: "session-a")
+        store.addDraftImage(attachment, to: "session-b")
+        XCTAssertEqual(store.draftImages(for: "session-a").count, 1)
+        XCTAssertEqual(store.draftImages(for: "session-b").count, 1)
+        store.removeDraftImage(attachment.id, from: "session-a")
+        XCTAssertTrue(store.draftImages(for: "session-a").isEmpty)
+    }
+
     @MainActor func testDraftsRemainPerSessionAcrossChatNavigation() {
         let store = AppStore()
         store.setDraft("first draft", for: "session-a")
@@ -126,8 +152,10 @@ final class SessionModelTests: XCTestCase {
         try await store.handle(envelope(#"{"kind":"progress","activity":"editing","timestamp":"2026-08-24T00:00:00Z"}"#))
         XCTAssertEqual(store.progressActivity(for: "wire"), .editing)
         XCTAssertTrue(store.messages(for: "wire").isEmpty)
+        try await store.handle(envelope(#"{"kind":"message","messageID":"photo","role":"user","text":"사진 확인","attachments":[{"id":"abc","mimeType":"image/jpeg"}],"timestamp":"2026-08-24T00:00:00Z","streaming":false}"#))
         try await store.handle(envelope(#"{"kind":"message","messageID":"m1","role":"assistant","text":"완료했습니다.","timestamp":"2026-08-24T00:00:01Z","streaming":false}"#))
-        XCTAssertEqual(store.messages(for: "wire").map(\.text), ["완료했습니다."])
+        XCTAssertEqual(store.messages(for: "wire").map(\.text), ["사진 확인", "완료했습니다."])
+        XCTAssertEqual(store.messages(for: "wire").first?.attachments.map(\.id), ["abc"])
     }
 
     @MainActor func testProductionConnectRejectsInsecureHostBeforeBroker() async {

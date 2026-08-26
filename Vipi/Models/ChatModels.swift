@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 enum ChatRole: String, Codable, Sendable { case user, assistant, system }
@@ -44,12 +45,60 @@ enum ProgressActivity: String, Codable, Sendable {
     }
 }
 
+struct ChatImageAttachment: Identifiable, Codable, Hashable, Sendable {
+    let id: String
+    let mimeType: String
+}
+
+struct DraftImageAttachment: Identifiable, Hashable, Sendable {
+    let id: String
+    let mimeType: String
+    let data: Data
+
+    init(data: Data, mimeType: String = "image/jpeg") {
+        self.data = data
+        self.mimeType = mimeType
+        id = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
+    var chatAttachment: ChatImageAttachment { ChatImageAttachment(id: id, mimeType: mimeType) }
+}
+
+enum ChatImageCache {
+    private static let directory: URL = {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let directory = base.appending(path: "Vipi/Attachments", directoryHint: .isDirectory)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        var mutableDirectory = directory
+        try? mutableDirectory.setResourceValues(values)
+        return directory
+    }()
+
+    static func store(_ attachment: DraftImageAttachment) throws {
+        try attachment.data.write(
+            to: fileURL(for: attachment.chatAttachment),
+            options: [.atomic, .completeFileProtection]
+        )
+    }
+
+    static func data(for attachment: ChatImageAttachment) -> Data? {
+        try? Data(contentsOf: fileURL(for: attachment), options: .mappedIfSafe)
+    }
+
+    private static func fileURL(for attachment: ChatImageAttachment) -> URL {
+        directory.appending(path: attachment.id).appendingPathExtension("jpg")
+    }
+}
+
 struct ChatMessage: Identifiable, Codable, Hashable, Sendable {
     var id: String
     var role: ChatRole
     var text: String
     var timestamp: Date
     var isStreaming: Bool = false
+    var attachments: [ChatImageAttachment] = []
 }
 
 struct BranchNode: Identifiable, Codable, Hashable, Sendable {

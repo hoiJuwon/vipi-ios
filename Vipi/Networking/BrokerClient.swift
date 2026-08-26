@@ -2,7 +2,18 @@ import Foundation
 
 actor BrokerClient {
     enum State: Sendable, Equatable { case disconnected, connecting, connected }
-    enum ClientError: Error { case invalidURL, notConnected }
+    enum ClientError: LocalizedError {
+        case invalidURL, notConnected, uploadRejected(Int), invalidUploadResponse
+
+        var errorDescription: String? {
+            switch self {
+            case .invalidURL: "The Vipi host URL is invalid."
+            case .notConnected: "The Vipi host is not connected."
+            case .uploadRejected(let status): "The image upload was rejected (HTTP \(status))."
+            case .invalidUploadResponse: "The Vipi host returned an invalid image response."
+            }
+        }
+    }
 
     private var socket: URLSessionWebSocketTask?
     private var receiveTask: Task<Void, Never>?
@@ -82,6 +93,27 @@ actor BrokerClient {
         let data = try JSONEncoder().encode(envelope)
         try await socket.send(.data(data))
         return id
+    }
+
+    func uploadAttachment(_ attachment: DraftImageAttachment, sessionID: String) async throws -> UploadedAttachment {
+        guard state == .connected, let credentials else { throw ClientError.notConnected }
+        let endpoint = try TailscaleEndpoint.parse(
+            credentials.host,
+            allowsInsecureLocalhostForUITesting: allowsInsecureLocalhostForUITesting
+        )
+        let url = endpoint.publicURL.appending(path: "attachments")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(credentials.token)", forHTTPHeaderField: "Authorization")
+        request.setValue(sessionID, forHTTPHeaderField: "X-Vipi-Session-ID")
+        request.setValue(attachment.mimeType, forHTTPHeaderField: "Content-Type")
+        request.setValue(attachment.id, forHTTPHeaderField: "X-Vipi-Content-SHA256")
+        let (data, response) = try await URLSession.shared.upload(for: request, from: attachment.data)
+        guard let http = response as? HTTPURLResponse else { throw ClientError.invalidUploadResponse }
+        guard http.statusCode == 201 else { throw ClientError.uploadRejected(http.statusCode) }
+        guard let uploaded = try? JSONDecoder().decode(UploadedAttachment.self, from: data),
+              uploaded.digest == attachment.id else { throw ClientError.invalidUploadResponse }
+        return uploaded
     }
 
     private func receiveLoop() async {

@@ -35,6 +35,8 @@ Assistant excerpts selected with `Add to Chat` travel only with the next `sessio
 
 Blocking extension interactions (`confirm`, `select`, and `input`) are bridged only while an authenticated mobile socket is present. Requests are ephemeral rather than replayed, responses are correlated to the originating runtime, and disconnect or timeout falls back to the original terminal UI. This prevents stale permission requests from reappearing after reconnect.
 
+Photo attachments use an authenticated `POST /attachments` endpoint on the existing loopback host through the same Tailscale Serve origin. iOS downsamples and re-encodes selected photos before upload, strips source metadata, and sends only short-lived attachment IDs in the WebSocket prompt. The host stores each upload as a private temporary file, binds it to one session, verifies its SHA-256 digest, and deletes it after runtime acceptance or expiry. The existing Pi extension converts the file to Pi `ImageContent` and calls `pi.sendUserMessage`, so the tmux Pi process remains the only JSONL writer. Mobile history receives only image digests and MIME types, never the base64 payload.
+
 ## Deliberate future scope
 
 Offline saved-session ownership remains out of scope. It requires an explicit ownership lease before any second process may resume a JSONL session.

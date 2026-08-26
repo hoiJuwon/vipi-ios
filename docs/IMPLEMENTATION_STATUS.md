@@ -13,6 +13,7 @@ Updated 2026-08-24 after independent-audit remediation.
 - Production launches empty/disconnected and never fabricates replies; mock sessions/replies require the explicit demo action or isolated UI-test launch.
 - Placeholder controls were removed. Production controls have actions and stable accessibility identifiers/semantics.
 - Pairing QR output requires an explicit public HTTPS `.ts.net` URL; loopback is never encoded as the phone destination.
+- The composer `+` menu inserts `/goal` or opens the scoped system photo picker. Photos are downsampled, metadata-stripped, privately uploaded through the existing authenticated host, delivered to vision-capable Pi models as `ImageContent`, and represented in mobile history without retransmitting base64 image payloads.
 
 ## Passing validation
 

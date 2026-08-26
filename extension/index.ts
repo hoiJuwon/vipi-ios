@@ -1,4 +1,5 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -11,6 +12,7 @@ const tokenPath = join(agentDir, "vipi", "token");
 const brokerURL = process.env.VIPI_BROKER_URL ?? "ws://127.0.0.1:8765/ws";
 
 type ChatAnnotation = { messageID: string; text: string };
+type RemoteAttachment = { id: string; digest: string; mimeType: string; path: string };
 type PendingAnnotatedTurn = { text: string; annotations: ChatAnnotation[] };
 
 function escapeAnnotation(text: string): string {
@@ -181,7 +183,11 @@ export default function vipiBridge(pi: ExtensionAPI) {
         socket.close();
         return;
       }
-      send("runtime.register", { token, session: sessionSnapshot(ctx) });
+      send("runtime.register", {
+        token,
+        session: sessionSnapshot(ctx),
+        capabilities: { imageAttachments: true, goalCommands: true },
+      });
     });
     socket.on("message", (raw) => {
       if (runtime.disposed || runtime.socket !== socket) return;
@@ -229,7 +235,22 @@ export default function vipiBridge(pi: ExtensionAPI) {
       if (message.type === "session.prompt") {
         const text = String(message.payload?.text ?? "");
         const delivery = message.payload?.delivery as "steer" | "followUp" | "prompt";
-        if (!text) throw new Error("empty prompt");
+        const rawAttachments = Array.isArray(message.payload?.attachments) ? message.payload.attachments : [];
+        const attachments = rawAttachments.slice(0, 4).flatMap((value): RemoteAttachment[] => {
+          if (!value || typeof value !== "object") return [];
+          const attachment = value as Record<string, unknown>;
+          const id = typeof attachment.id === "string" ? attachment.id : "";
+          const digest = typeof attachment.digest === "string" ? attachment.digest : "";
+          const mimeType = typeof attachment.mimeType === "string" ? attachment.mimeType : "";
+          const path = typeof attachment.path === "string" ? attachment.path : "";
+          if (!id || !digest.match(/^[a-f0-9]{64}$/) || !["image/jpeg", "image/png", "image/webp"].includes(mimeType) || !path) return [];
+          return [{ id, digest, mimeType, path }];
+        });
+        if (!text && attachments.length === 0) throw new Error("empty prompt");
+        const isGoalCommand = /^\/goal(?:\s|$)/.test(text);
+        if (isGoalCommand && delivery !== "prompt") throw new Error("/goal can only be started while the session is idle");
+        if (isGoalCommand && attachments.length > 0) throw new Error("/goal cannot be combined with photos");
+        if (attachments.length > 0 && !ctx.model?.input?.includes("image")) throw new Error("the current model does not support images");
         const rawAnnotations = Array.isArray(message.payload?.annotations) ? message.payload.annotations : [];
         const annotations = rawAnnotations.slice(0, 4).flatMap((value): ChatAnnotation[] => {
           if (!value || typeof value !== "object") return [];
@@ -241,8 +262,23 @@ export default function vipiBridge(pi: ExtensionAPI) {
         const pending = annotations.length ? { text, annotations } : undefined;
         if (pending) pendingAnnotatedTurns.push(pending);
         try {
-          if (delivery === "steer" || delivery === "followUp") pi.sendUserMessage(text, { deliverAs: delivery });
-          else pi.sendUserMessage(text);
+          const content = attachments.length > 0
+            ? [
+                ...(text ? [{ type: "text" as const, text }] : []),
+                ...attachments.map((attachment) => {
+                  const data = readFileSync(attachment.path);
+                  if (data.length > 6 * 1024 * 1024) throw new Error("image is too large");
+                  const digest = createHash("sha256").update(data).digest("hex");
+                  if (digest !== attachment.digest) throw new Error("image integrity check failed");
+                  return { type: "image" as const, data: data.toString("base64"), mimeType: attachment.mimeType };
+                }),
+              ]
+            : text;
+          const options = {
+            ...(delivery === "steer" || delivery === "followUp" ? { deliverAs: delivery } : {}),
+            ...(isGoalCommand ? { expandPromptTemplates: true } : {}),
+          } as { deliverAs?: "steer" | "followUp"; expandPromptTemplates?: boolean };
+          pi.sendUserMessage(content, options);
         } catch (error) {
           if (pending) {
             const pendingIndex = pendingAnnotatedTurns.indexOf(pending);
@@ -315,6 +351,8 @@ export default function vipiBridge(pi: ExtensionAPI) {
   pi.on("message_end", async (event, ctx) => {
     const messageID = persistedMessageID(event.message, ctx) ?? crypto.randomUUID();
     const normalized = normalizeMessage(event.message, messageID, false);
+    if (normalized?.kind === "message" && normalized.role === "user" &&
+        (normalized.text.startsWith("[GOAL CONFIRMATION") || normalized.text.startsWith("[GOAL TWEAK DRAFT]"))) return;
     if (normalized) send("runtime.event", { sessionID: ctx.sessionManager.getSessionId(), event: normalized });
   });
   pi.on("agent_settled", async (_event, ctx) => { runtime.phase = "completed"; runtime.unread = true; send("runtime.session", { session: sessionSnapshot(ctx) }); });

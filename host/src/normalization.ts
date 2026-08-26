@@ -1,11 +1,14 @@
+import { createHash } from "node:crypto";
+
 export type ChatRole = "user" | "assistant";
 export type MobileActivity = "thinking" | "reading" | "editing" | "running" | "searching";
 
 export type NormalizedSessionEvent =
-  | { kind: "message"; messageID: string; role: ChatRole; text: string; timestamp: string; streaming: boolean; entryID?: string; replacesMessageID?: string }
+  | { kind: "message"; messageID: string; role: ChatRole; text: string; timestamp: string; streaming: boolean; attachments?: ImageAttachment[]; entryID?: string; replacesMessageID?: string }
   | { kind: "progress"; activity: MobileActivity; timestamp: string };
 
 type UnknownRecord = Record<string, unknown>;
+type ImageAttachment = { id: string; mimeType: string };
 
 function record(value: unknown): UnknownRecord | undefined {
   return value !== null && typeof value === "object" ? value as UnknownRecord : undefined;
@@ -18,6 +21,22 @@ function textContent(value: unknown): string {
     const item = record(part);
     return item?.type === "text" && typeof item.text === "string" ? [item.text] : [];
   }).join("");
+}
+
+function imageAttachments(value: unknown): ImageAttachment[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 4).flatMap((part): ImageAttachment[] => {
+    const item = record(part);
+    const source = record(item?.source);
+    const data = typeof item?.data === "string"
+      ? item.data
+      : source?.type === "base64" && typeof source.data === "string" ? source.data : undefined;
+    const mimeType = typeof item?.mimeType === "string"
+      ? item.mimeType
+      : typeof source?.mediaType === "string" ? source.mediaType : undefined;
+    if (item?.type !== "image" || !data || !mimeType?.startsWith("image/")) return [];
+    return [{ id: createHash("sha256").update(data, "base64").digest("hex"), mimeType }];
+  });
 }
 
 function timestamp(value: unknown): string {
@@ -40,7 +59,9 @@ export function normalizeMessage(
   const message = record(messageValue);
   if (!message || (message.role !== "user" && message.role !== "assistant") || hasToolCall(message)) return undefined;
   const text = textContent(message.content);
-  if (!text.trim()) return undefined;
+  const attachments = message.role === "user" ? imageAttachments(message.content) : [];
+  if (message.role === "user" && (text.startsWith("[GOAL CONFIRMATION") || text.startsWith("[GOAL TWEAK DRAFT]"))) return undefined;
+  if (!text.trim() && attachments.length === 0) return undefined;
   return {
     kind: "message",
     messageID,
@@ -48,6 +69,7 @@ export function normalizeMessage(
     text,
     timestamp: timestamp(message.timestamp),
     streaming,
+    ...(attachments.length > 0 ? { attachments } : {}),
     ...(entryID ? { entryID } : {}),
     ...(replacesMessageID ? { replacesMessageID } : {}),
   };

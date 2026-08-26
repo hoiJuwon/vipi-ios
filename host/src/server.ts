@@ -1,4 +1,7 @@
-import { createServer } from "node:http";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { dirname, join } from "node:path";
 import { WebSocketServer, WebSocket } from "ws";
 import qrcode from "qrcode-terminal";
 import { envelope, PROTOCOL_VERSION, type Envelope, type SessionRecord } from "./protocol.js";
@@ -27,12 +30,24 @@ const replayBuffer: Envelope[] = [];
 const mobileClients = new Set<WebSocket>();
 const runtimes = new Map<string, WebSocket>();
 const runtimePanes = new Map<string, string>();
+const runtimeCapabilities = new Map<string, { imageAttachments: boolean; goalCommands: boolean }>();
 const liveSessions = new Map<string, SessionRecord>();
 const pendingRequests = new Map<string, WebSocket>();
 const pendingAssistantEvents = new Map<string, Record<string, unknown>>();
 const pendingInteractions = new Map<string, string>();
+const attachmentDirectory = join(dirname(tokenPath), "attachments");
+const attachmentLimit = 6 * 1024 * 1024;
+const attachmentTTL = 15 * 60 * 1000;
+type PendingAttachment = { id: string; digest: string; mimeType: string; path: string; sessionID: string; expiresAt: number };
+const pendingAttachments = new Map<string, PendingAttachment>();
+const requestAttachments = new Map<string, string[]>();
+mkdirSync(attachmentDirectory, { recursive: true, mode: 0o700 });
 
 const server = createServer((request, response) => {
+  if (request.method === "POST" && request.url === "/attachments") {
+    receiveAttachment(request, response);
+    return;
+  }
   if (request.url === "/health") {
     response.writeHead(200, { "content-type": "application/json" });
     response.end(JSON.stringify({
@@ -46,6 +61,84 @@ const server = createServer((request, response) => {
   }
   response.writeHead(404).end();
 });
+
+function attachmentMimeType(requested: string | undefined, data: Buffer): string | undefined {
+  if (requested === "image/jpeg" && data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) return requested;
+  if (requested === "image/png" && data.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return requested;
+  if (requested === "image/webp" && data.subarray(0, 4).toString("ascii") === "RIFF" && data.subarray(8, 12).toString("ascii") === "WEBP") return requested;
+  return undefined;
+}
+
+function removeAttachment(id: string): void {
+  const attachment = pendingAttachments.get(id);
+  if (!attachment) return;
+  pendingAttachments.delete(id);
+  try { unlinkSync(attachment.path); } catch {}
+}
+
+function receiveAttachment(request: IncomingMessage, response: ServerResponse): void {
+  const authorization = request.headers.authorization;
+  const candidateToken = authorization?.startsWith("Bearer ") ? authorization.slice(7) : undefined;
+  if (!tokenMatches(token, candidateToken)) {
+    response.writeHead(401, { "content-type": "application/json" }).end(JSON.stringify({ error: "UNAUTHORIZED" }));
+    request.resume();
+    return;
+  }
+  const sessionID = typeof request.headers["x-vipi-session-id"] === "string" ? request.headers["x-vipi-session-id"] : undefined;
+  if (!sessionID || !currentRuntime(sessionID)) {
+    response.writeHead(404, { "content-type": "application/json" }).end(JSON.stringify({ error: "SESSION_OFFLINE" }));
+    request.resume();
+    return;
+  }
+  if (runtimeCapabilities.get(sessionID)?.imageAttachments !== true) {
+    response.writeHead(409, { "content-type": "application/json" }).end(JSON.stringify({ error: "RUNTIME_UPDATE_REQUIRED" }));
+    request.resume();
+    return;
+  }
+  if (pendingAttachments.size >= 24) {
+    response.writeHead(429, { "content-type": "application/json" }).end(JSON.stringify({ error: "UPLOAD_CAPACITY" }));
+    request.resume();
+    return;
+  }
+  const requestedMimeType = request.headers["content-type"]?.split(";", 1)[0]?.trim().toLowerCase();
+  const expectedDigest = typeof request.headers["x-vipi-content-sha256"] === "string"
+    ? request.headers["x-vipi-content-sha256"].toLowerCase() : undefined;
+  const chunks: Buffer[] = [];
+  let size = 0;
+  let tooLarge = false;
+  request.on("data", (chunk: Buffer) => {
+    size += chunk.length;
+    if (size > attachmentLimit) { tooLarge = true; chunks.length = 0; return; }
+    if (!tooLarge) chunks.push(chunk);
+  });
+  request.on("end", () => {
+    if (tooLarge) {
+      response.writeHead(413, { "content-type": "application/json" }).end(JSON.stringify({ error: "IMAGE_TOO_LARGE" }));
+      return;
+    }
+    const data = Buffer.concat(chunks);
+    const mimeType = attachmentMimeType(requestedMimeType, data);
+    const digest = createHash("sha256").update(data).digest("hex");
+    if (!mimeType || !expectedDigest?.match(/^[a-f0-9]{64}$/) || expectedDigest !== digest) {
+      response.writeHead(400, { "content-type": "application/json" }).end(JSON.stringify({ error: "INVALID_IMAGE" }));
+      return;
+    }
+    const id = randomUUID();
+    const path = join(attachmentDirectory, `${id}.image`);
+    try {
+      writeFileSync(path, data, { mode: 0o600 });
+      pendingAttachments.set(id, { id, digest, mimeType, path, sessionID, expiresAt: Date.now() + attachmentTTL });
+      response.writeHead(201, { "content-type": "application/json", "cache-control": "no-store" });
+      response.end(JSON.stringify({ id, digest, mimeType }));
+    } catch {
+      try { unlinkSync(path); } catch {}
+      response.writeHead(500, { "content-type": "application/json" }).end(JSON.stringify({ error: "UPLOAD_FAILED" }));
+    }
+  });
+  request.on("error", () => {
+    if (!response.headersSent) response.writeHead(400).end();
+  });
+}
 
 const wss = new WebSocketServer({ server, path: "/ws", maxPayload: 512 * 1024 });
 wss.on("connection", (socket) => {
@@ -95,6 +188,11 @@ wss.on("connection", (socket) => {
         if (previous && previous !== socket) previous.close(4009, "runtime replaced");
         role = "runtime"; runtimeSessionID = session.id; runtimes.set(session.id, socket);
         if (paneID) runtimePanes.set(session.id, paneID);
+        const capabilities = message.payload.capabilities as Record<string, unknown> | undefined;
+        runtimeCapabilities.set(session.id, {
+          imageAttachments: capabilities?.imageAttachments === true,
+          goalCommands: capabilities?.goalCommands === true,
+        });
         liveSessions.set(session.id, session);
         clearTimeout(authTimer); broadcast("sessions.snapshot", { sessions: mergedSessions() });
         socket.send(JSON.stringify(envelope("runtime.mobilePresence", { connected: mobileClients.size > 0 }, undefined, ++sequence)));
@@ -147,7 +245,11 @@ wss.on("connection", (socket) => {
         if (requester?.readyState === WebSocket.OPEN) {
           requester.send(JSON.stringify(envelope("session.response", message.payload, requestID, ++sequence)));
         }
-        if (requestID) pendingRequests.delete(requestID);
+        if (requestID) {
+          pendingRequests.delete(requestID);
+          for (const attachmentID of requestAttachments.get(requestID) ?? []) removeAttachment(attachmentID);
+          requestAttachments.delete(requestID);
+        }
       } else if (message.type === "runtime.event") {
         relayRuntimeEvent(message.payload);
       } else if (message.type.startsWith("runtime.")) {
@@ -223,18 +325,57 @@ wss.on("connection", (socket) => {
       socket.send(JSON.stringify(envelope("error", { code: "SESSION_OFFLINE", sessionID }, message.id, ++sequence)));
       return;
     }
+    let forwardedMessage: Envelope<Record<string, unknown>> = message;
+    if (message.type === "session.prompt") {
+      const promptText = typeof message.payload?.text === "string" ? message.payload.text : "";
+      if (/^\/goal(?:\s|$)/.test(promptText) && runtimeCapabilities.get(sessionID)?.goalCommands !== true) {
+        socket.send(JSON.stringify(envelope("error", { code: "RUNTIME_UPDATE_REQUIRED" }, message.id, ++sequence)));
+        return;
+      }
+      const attachmentIDs = Array.isArray(message.payload?.attachments)
+        ? message.payload.attachments.flatMap((value): string[] => {
+            if (!value || typeof value !== "object") return [];
+            const id = (value as Record<string, unknown>).id;
+            return typeof id === "string" ? [id] : [];
+          }).slice(0, 4)
+        : [];
+      const attachments = attachmentIDs.map((id) => pendingAttachments.get(id));
+      if (attachments.some((attachment) => !attachment || attachment.sessionID !== sessionID || attachment.expiresAt <= Date.now())) {
+        socket.send(JSON.stringify(envelope("error", { code: "ATTACHMENT_EXPIRED" }, message.id, ++sequence)));
+        return;
+      }
+      forwardedMessage = {
+        ...message,
+        payload: {
+          ...message.payload,
+          attachments: attachments.flatMap((attachment) => attachment ? [{
+            id: attachment.id,
+            digest: attachment.digest,
+            mimeType: attachment.mimeType,
+            path: attachment.path,
+          }] : []),
+        },
+      };
+      if (message.id && attachmentIDs.length > 0) requestAttachments.set(message.id, attachmentIDs);
+    }
     if (message.id) pendingRequests.set(message.id, socket);
-    runtime.send(JSON.stringify(message));
+    runtime.send(JSON.stringify(forwardedMessage));
   });
 
   socket.on("close", () => {
     clearTimeout(authTimer);
     const wasMobile = mobileClients.delete(socket);
     if (wasMobile) notifyRuntimeMobilePresence();
-    for (const [requestID, requester] of pendingRequests) if (requester === socket) pendingRequests.delete(requestID);
+    for (const [requestID, requester] of pendingRequests) {
+      if (requester !== socket) continue;
+      pendingRequests.delete(requestID);
+      for (const attachmentID of requestAttachments.get(requestID) ?? []) removeAttachment(attachmentID);
+      requestAttachments.delete(requestID);
+    }
     if (runtimeSessionID && runtimes.get(runtimeSessionID) === socket) {
       runtimes.delete(runtimeSessionID);
       runtimePanes.delete(runtimeSessionID);
+      runtimeCapabilities.delete(runtimeSessionID);
       pendingAssistantEvents.delete(runtimeSessionID);
       for (const [requestID, sessionID] of pendingInteractions) {
         if (sessionID === runtimeSessionID) pendingInteractions.delete(requestID);
@@ -254,6 +395,7 @@ function currentRuntime(sessionID: string): WebSocket | undefined {
   if (registered && runtimePane && registered.tmux.paneID !== runtimePane) {
     runtimes.delete(sessionID);
     runtimePanes.delete(sessionID);
+    runtimeCapabilities.delete(sessionID);
     runtime.close(4009, "stale tmux runtime");
     return undefined;
   }
@@ -294,6 +436,11 @@ setInterval(() => {
   broadcast("sessions.snapshot", { sessions: mergedSessions() });
 }, 250).unref();
 
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, attachment] of pendingAttachments) if (attachment.expiresAt <= now) removeAttachment(id);
+}, 60_000).unref();
+
 function relayRuntimeEvent(payload: Record<string, unknown>): void {
   const sessionID = typeof payload.sessionID === "string" ? payload.sessionID : undefined;
   const event = payload.event && typeof payload.event === "object" ? payload.event as Record<string, unknown> : undefined;
@@ -320,7 +467,16 @@ function relayRuntimeEvent(payload: Record<string, unknown>): void {
   if (event.kind !== "message" || (event.role !== "user" && event.role !== "assistant")) return;
   if (event.role === "assistant" && event.streaming === true) return;
   const text = typeof event.text === "string" ? event.text : "";
-  if (!text.trim()) return;
+  const attachments = event.role === "user" && Array.isArray(event.attachments)
+    ? event.attachments.flatMap((value): Array<{ id: string; mimeType: string }> => {
+        if (!value || typeof value !== "object") return [];
+        const attachment = value as Record<string, unknown>;
+        const id = typeof attachment.id === "string" && attachment.id.match(/^[a-f0-9]{64}$/) ? attachment.id : undefined;
+        const mimeType = typeof attachment.mimeType === "string" && attachment.mimeType.startsWith("image/") ? attachment.mimeType : undefined;
+        return id && mimeType ? [{ id, mimeType }] : [];
+      }).slice(0, 4)
+    : [];
+  if (!text.trim() && attachments.length === 0) return;
   const sanitized = {
     sessionID,
     event: {
@@ -330,6 +486,7 @@ function relayRuntimeEvent(payload: Record<string, unknown>): void {
       text,
       timestamp: typeof event.timestamp === "string" ? event.timestamp : new Date().toISOString(),
       streaming: false,
+      ...(attachments.length > 0 ? { attachments } : {}),
     },
   };
   if (event.role === "assistant" && liveSessions.get(sessionID)?.phase === "working") {

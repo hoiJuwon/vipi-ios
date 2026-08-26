@@ -47,10 +47,21 @@ struct InteractionResponsePayload: Encodable {
     let requestID: String
     let response: JSONValue
 }
+struct PromptAttachmentReference: Encodable {
+    let id: String
+}
+
+struct UploadedAttachment: Decodable, Sendable {
+    let id: String
+    let digest: String
+    let mimeType: String
+}
+
 struct PromptPayload: Encodable {
     let sessionID: String
     let text: String
     let delivery: PromptDelivery
     let annotations: [ChatAnnotation]
+    let attachments: [PromptAttachmentReference]
 }
 struct RenamePayload: Encodable { let sessionID: String; let name: String }
