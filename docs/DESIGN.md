@@ -27,7 +27,7 @@ Official references:
 - **Content:** transcript and session data remain visually dominant.
 - **Functional glass:** one floating composer surface and system-provided toolbar, menu, tab, and transient navigation controls form the functional layer above content. Avoid nested custom Glass surfaces.
 - **Atmosphere:** the canvas stays nearly neutral. Ambient gradients are faint, and the transcript remains visually dominant.
-- **Identity:** Ice Blue is reserved for the animated progress core and limited state emphasis. User bubbles use a neutral solid surface with white text instead of Liquid Glass or a saturated brand fill.
+- **Identity:** everyday interface chrome is monochrome. Brand blue is reserved for the app icon, launch artwork, and animated progress core; user bubbles remain neutral solid surfaces with white text.
 - **Working state:** progress reads like the next assistant message, never a button or card. Italic activity copy and duration, compact English timing (`42s`, `2m 13s`), and the animated Ice Blue luminous core form one leading-aligned vertical stack. The core visibly travels, stretches, and pulses at 30 fps while its Metal texture evolves; extra breathing room separates it from the duration. Reduce Motion freezes it to a representative frame.
 - **Submitted turn:** after a prompt is accepted, its user bubble scrolls to the top of the response viewport with progress directly beneath it, reserving the remaining viewport for the incoming answer.
 - **Quoted context:** selecting assistant prose offers `Add to Chat`; the chosen excerpt appears as a compact removable quote annotation above the composer and stays scoped to that session's next prompt.
@@ -36,6 +36,6 @@ Official references:
 - **Markdown tables:** GitHub-style pipe tables render as native, selectable cells with a distinct header, aligned numeric columns, wrapped mobile widths for up to three columns, and horizontal scrolling for wider tables.
 - **Composer layout:** prompt text occupies a full-width first row so typing starts near the leading edge without a dead gap. A second 44 pt control row keeps `+` at the leading edge and send/stop at the trailing edge. The `+` menu exposes only `/goal` and Photo Library; selected photos appear above the field.
 - **Controls:** use standard toolbar and button appearances so iOS supplies Liquid Glass, interaction states, and adaptation. Icon controls maintain at least a 44×44 pt hit region.
-- **Primary actions:** send and stop use the same deep primary-action surface with a white symbol, keeping their stable composer position and avoiding a semantic color shift after submission.
-- **Status color:** color communicates state but never serves as the only indicator. System red is reserved for destructive actions.
+- **Primary actions:** send and stop use the same high-contrast monochrome treatment—black with a white symbol in light appearance, white with a black symbol in dark appearance—so state changes do not introduce a new hue.
+- **Status color:** reserve color for semantic warning, success, unread, and destructive states, and never use color as the only indicator.
 - **Motion:** freeze the Liquid Orb to a representative frame when Reduce Motion is enabled.
