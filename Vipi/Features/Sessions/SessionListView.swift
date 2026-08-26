@@ -36,23 +36,15 @@ struct SessionListView: View {
                 .refreshable { await store.connect() }
             }
         }
-        .navigationTitle("Sessions")
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $searchText, prompt: "Search sessions")
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                HStack(spacing: 8) {
-                    Image("BrandIcon")
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 22, height: 22)
-                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                        .accessibilityHidden(true)
-                    ConnectionCapsule(state: store.connectionState)
-                }
-                .padding(.horizontal, 11)
-                .padding(.vertical, 7)
-                .vipiGlass(in: Capsule())
+                ConnectionCapsule(state: store.connectionState)
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 7)
+                    .vipiGlass(in: Capsule())
             }
         }
     }

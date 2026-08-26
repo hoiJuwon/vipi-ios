@@ -25,9 +25,12 @@ struct ConnectionCapsule: View {
     var body: some View {
         HStack(spacing: 7) {
             Circle().fill(color).frame(width: 7, height: 7)
-            Text(label).font(.caption.weight(.medium))
+            Text(label)
+                .font(.caption.weight(.medium))
+                .fixedSize()
         }
         .foregroundStyle(color)
+        .fixedSize()
         .accessibilityElement(children: .ignore)
         .accessibilityIdentifier("connection.status")
         .accessibilityLabel("Connection")
@@ -38,7 +41,7 @@ struct ConnectionCapsule: View {
         switch state {
         case .demo: "Demo"
         case .connecting: "Connecting"
-        case .connected: "Tailnet"
+        case .connected: "Live"
         case .disconnected: "Offline"
         }
     }
