@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { spawn, type ChildProcess } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -19,6 +19,7 @@ let directory: string;
 let port: number;
 let token: string;
 let hostOutput = "";
+let workspaceRoot: string;
 
 async function availablePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -73,10 +74,28 @@ async function receiveType(socket: WebSocket, type: string): Promise<Record<stri
 
 before(async () => {
   directory = await mkdtemp(join(tmpdir(), "vipi-test-"));
+  workspaceRoot = join(directory, "workspace-root");
+  const projectDirectory = join(workspaceRoot, "project-one");
+  mkdirSync(projectDirectory, { recursive: true });
+  workspaceRoot = realpathSync(workspaceRoot);
+  const fakeTmux = join(directory, "fake-tmux");
+  const fakePi = join(directory, "fake-pi");
+  writeFileSync(fakeTmux, `#!/bin/sh\nif [ "$1" = "list-sessions" ]; then printf 'base\\t1\\t1\\n'; exit 0; fi\nif [ "$1" = "new-window" ]; then printf 'base\\t9\\t%%99\\t12345\\n'; exit 0; fi\nexit 1\n`);
+  writeFileSync(fakePi, "#!/bin/sh\nexit 0\n");
+  chmodSync(fakeTmux, 0o700);
+  chmodSync(fakePi, 0o700);
   port = await availablePort();
   child = spawn(process.execPath, ["--import", "tsx", "host/src/server.ts"], {
     cwd: process.cwd(),
-    env: { ...process.env, PI_CODING_AGENT_DIR: directory, VIPI_PORT: String(port), VIPI_HOST: "127.0.0.1" },
+    env: {
+      ...process.env,
+      PI_CODING_AGENT_DIR: directory,
+      VIPI_PORT: String(port),
+      VIPI_HOST: "127.0.0.1",
+      VIPI_WORKSPACE_ROOT: workspaceRoot,
+      VIPI_TMUX_EXECUTABLE: fakeTmux,
+      VIPI_PI_EXECUTABLE: fakePi,
+    },
     stdio: ["ignore", "pipe", "pipe"],
   });
   await new Promise<void>((resolve, reject) => {
@@ -103,6 +122,45 @@ test("creates pairing payloads only for public HTTPS Tailscale hosts", () => {
   assert.throws(() => createPairingPayload(undefined, "token"), /VIPI_PUBLIC_URL is required/);
   assert.throws(() => createPairingPayload("http://127.0.0.1:8765", "token"), /HTTPS/);
   assert.throws(() => createPairingPayload("https://public.example.com", "token"), /.ts.net/);
+});
+
+test("lists registered workspaces, browses safe directories, and starts a tmux Pi session", async () => {
+  const mobile = await connect();
+  send(mobile, "auth.authenticate", { token }, "workspace-auth");
+  await receiveType(mobile, "auth.ok");
+  await receiveType(mobile, "sessions.snapshot");
+
+  send(mobile, "workspaces.list", {}, "workspace-list");
+  const listed = await receiveType(mobile, "session.response");
+  assert.equal(listed.id, "workspace-list");
+  assert.equal(listed.payload.ok, true);
+  assert.equal(listed.payload.result.home, workspaceRoot);
+  assert.deepEqual(listed.payload.result.workspaces, []);
+
+  send(mobile, "workspaces.browse", { path: workspaceRoot }, "workspace-browse");
+  const browsed = await receiveType(mobile, "session.response");
+  assert.equal(browsed.payload.ok, true);
+  assert.deepEqual(browsed.payload.result.directories, [join(workspaceRoot, "project-one")]);
+
+  send(mobile, "workspaces.browse", { path: tmpdir() }, "workspace-escape");
+  const escaped = await receiveType(mobile, "session.response");
+  assert.equal(escaped.payload.ok, false);
+  assert.match(escaped.payload.result.error, /outside/);
+
+  const projectDirectory = join(workspaceRoot, "project-one");
+  send(mobile, "session.create", { cwd: projectDirectory }, "session-create");
+  const created = await receiveType(mobile, "session.response");
+  assert.equal(created.id, "session-create");
+  assert.equal(created.payload.ok, true);
+  assert.equal(created.payload.result.cwd, projectDirectory);
+  assert.equal(created.payload.result.paneID, "%99");
+
+  const workspaces = JSON.parse(await readFile(join(directory, "tmux-workspaces.json"), "utf8"));
+  assert.deepEqual(workspaces.workspaces, [projectDirectory]);
+  const registry = JSON.parse(await readFile(join(directory, "tmux-session-tree.json"), "utf8"));
+  assert.equal(registry.entries.at(-1).piSessionId, "pending:%99");
+  assert.equal(registry.entries.at(-1).cwd, projectDirectory);
+  mobile.close();
 });
 
 test("normalizes final messages and redacts tool payloads from mobile DTOs", () => {

@@ -58,3 +58,15 @@ struct WorkspaceGroup: Identifiable, Hashable {
     let path: String
     var sessions: [RemoteSession]
 }
+
+struct WorkspaceDirectoryListing: Equatable, Sendable {
+    let path: String
+    let parent: String?
+    let directories: [String]
+}
+
+enum SessionCreationRequest: Equatable {
+    case workspaces
+    case browse
+    case create(path: String)
+}

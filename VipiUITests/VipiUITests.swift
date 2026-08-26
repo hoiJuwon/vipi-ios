@@ -38,6 +38,26 @@ final class VipiUITests: XCTestCase {
         XCTAssertFalse(app.textViews.matching(NSPredicate(format: "label CONTAINS %@", "|---|")).firstMatch.exists)
     }
 
+    func testNewSessionPickerShowsRegisteredWorkspacesAndCreatesSession() {
+        let add = app.buttons["sessions.add"]
+        XCTAssertTrue(add.waitForExistence(timeout: 5))
+        XCTAssertTrue(add.isHittable)
+        add.tap()
+
+        XCTAssertTrue(app.navigationBars["New Session"].waitForExistence(timeout: 5))
+        let workspace = app.buttons["workspace.registered./Users/choijuwon/vipi-ios"]
+        XCTAssertTrue(workspace.waitForExistence(timeout: 5))
+        workspace.tap()
+
+        let create = app.buttons["session.create"]
+        XCTAssertTrue(create.waitForExistence(timeout: 5))
+        XCTAssertTrue(create.isEnabled)
+        create.tap()
+
+        XCTAssertFalse(app.navigationBars["New Session"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["기타 / 새 세션"].waitForExistence(timeout: 5))
+    }
+
     func testOpenSessionAndSendPrompt() {
         XCTAssertFalse(app.tabBars.buttons["Activity"].exists)
         let session = app.buttons["session.mobile"]

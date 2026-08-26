@@ -12,7 +12,7 @@ The repository contains all three layers needed for the product:
 
 Implemented app surfaces:
 
-- workspace-grouped live session list
+- workspace-grouped live session list with remote folder selection and new tmux Pi session creation
 - working, input-needed, completed, unread, and offline states
 - final-answer chat transcript with intermediate tool output omitted
 - prompt / queue / steer composer
@@ -156,6 +156,8 @@ Client commands currently wired:
 
 - `auth.authenticate`
 - `sessions.list`
+- `workspaces.list`, `workspaces.browse`
+- `session.create`
 - `session.prompt` (`prompt`, `steer`, `followUp`)
 - `session.abort`
 - `session.history`

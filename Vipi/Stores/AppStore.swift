@@ -21,6 +21,15 @@ final class AppStore {
     var queuedPromptsBySession: [String: [QueuedPrompt]] = [:]
     var progressBySession: [String: ProgressActivity] = [:]
     var commandError: String?
+    var registeredWorkspaces: [String] = []
+    var workspaceHome: String?
+    var workspaceDirectory: WorkspaceDirectoryListing?
+    var isLoadingWorkspaces = false
+    var isBrowsingWorkspace = false
+    var isCreatingSession = false
+    var sessionCreationSucceeded = false
+    var sessionCreationError: String?
+    var startingSessionPath: String?
 
     private let broker: BrokerClient
     private let allowsInsecureLocalhostForUITesting: Bool
@@ -30,6 +39,9 @@ final class AppStore {
     private var historyHasMoreBySession: [String: Bool] = [:]
     private var pendingHistoryRequests: [String: PendingHistoryRequest] = [:]
     private var historyRequestsInFlight: Set<String> = []
+    private var pendingSessionCreationRequests: [String: SessionCreationRequest] = [:]
+    private var latestWorkspaceBrowseRequestID: String?
+    private var startingSessionPaneID: String?
 
     init(
         broker: BrokerClient = BrokerClient(),
@@ -353,6 +365,139 @@ final class AppStore {
         }
     }
 
+    func prepareSessionCreation() async {
+        sessionCreationSucceeded = false
+        sessionCreationError = nil
+        registeredWorkspaces = []
+        workspaceHome = nil
+        workspaceDirectory = nil
+        isBrowsingWorkspace = false
+        isLoadingWorkspaces = true
+
+        if connectionState == .demo {
+            let paths = Array(Set(sessions.map(\.cwd))).sorted()
+            registeredWorkspaces = paths
+            workspaceHome = "/Users/choijuwon"
+            workspaceDirectory = demoWorkspaceDirectory(at: workspaceHome ?? "/Users/choijuwon")
+            isLoadingWorkspaces = false
+            return
+        }
+        guard connectionState == .connected else {
+            isLoadingWorkspaces = false
+            sessionCreationError = "Connect to the Vipi host before starting a session."
+            return
+        }
+        do {
+            let requestID = try await broker.send(type: "workspaces.list", payload: EmptyPayload())
+            pendingSessionCreationRequests[requestID] = .workspaces
+            scheduleSessionCreationTimeout(requestID)
+        } catch {
+            isLoadingWorkspaces = false
+            sessionCreationError = error.localizedDescription
+        }
+    }
+
+    func browseWorkspace(_ path: String?) async {
+        sessionCreationError = nil
+        if connectionState == .demo {
+            let target = path ?? workspaceHome ?? "/Users/choijuwon"
+            workspaceDirectory = demoWorkspaceDirectory(at: target)
+            return
+        }
+        guard connectionState == .connected else {
+            sessionCreationError = "The Vipi host is disconnected."
+            return
+        }
+        isBrowsingWorkspace = true
+        do {
+            let requestID = try await broker.send(
+                type: "workspaces.browse",
+                payload: WorkspaceBrowsePayload(path: path)
+            )
+            latestWorkspaceBrowseRequestID = requestID
+            pendingSessionCreationRequests[requestID] = .browse
+            scheduleSessionCreationTimeout(requestID)
+        } catch {
+            isBrowsingWorkspace = false
+            sessionCreationError = error.localizedDescription
+        }
+    }
+
+    func createSession(in path: String) async {
+        guard !isCreatingSession else { return }
+        sessionCreationSucceeded = false
+        sessionCreationError = nil
+        isCreatingSession = true
+        startingSessionPath = path
+        startingSessionPaneID = nil
+
+        if connectionState == .demo {
+            let now = Date.now
+            sessions.insert(RemoteSession(
+                id: "demo-\(UUID().uuidString)",
+                name: "기타 / 새 세션",
+                cwd: path,
+                phase: .idle,
+                unread: false,
+                lastActivityAt: now,
+                model: "Pi",
+                thinkingLevel: "—",
+                contextPercent: 0,
+                tmux: TmuxCoordinates(session: "demo", window: "1", paneID: "%demo"),
+                sessionFile: nil
+            ), at: 0)
+            registeredWorkspaces = Array(Set(registeredWorkspaces + [path])).sorted()
+            isCreatingSession = false
+            startingSessionPath = nil
+            sessionCreationSucceeded = true
+            return
+        }
+        guard connectionState == .connected else {
+            isCreatingSession = false
+            startingSessionPath = nil
+            sessionCreationError = "The Vipi host is disconnected."
+            return
+        }
+        do {
+            let requestID = try await broker.send(type: "session.create", payload: SessionCreatePayload(cwd: path))
+            pendingSessionCreationRequests[requestID] = .create(path: path)
+            scheduleSessionCreationTimeout(requestID, seconds: 15)
+        } catch {
+            isCreatingSession = false
+            startingSessionPath = nil
+            sessionCreationError = error.localizedDescription
+        }
+    }
+
+    private func demoWorkspaceDirectory(at path: String) -> WorkspaceDirectoryListing {
+        let known = Set(sessions.map(\.cwd) + [
+            "/Users/choijuwon/Desktop",
+            "/Users/choijuwon/Desktop/development",
+            "/Users/choijuwon/Desktop/development/works",
+        ])
+        let directories = known.filter { candidate in
+            URL(fileURLWithPath: candidate).deletingLastPathComponent().path == path && candidate != path
+        }.sorted()
+        let parent = path == "/Users/choijuwon" ? nil : URL(fileURLWithPath: path).deletingLastPathComponent().path
+        return WorkspaceDirectoryListing(path: path, parent: parent, directories: directories)
+    }
+
+    private func scheduleSessionCreationTimeout(_ requestID: String, seconds: Int = 10) {
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(seconds))
+            guard let self, let request = self.pendingSessionCreationRequests.removeValue(forKey: requestID) else { return }
+            switch request {
+            case .workspaces: self.isLoadingWorkspaces = false
+            case .browse:
+                if self.latestWorkspaceBrowseRequestID == requestID { self.isBrowsingWorkspace = false }
+            case .create:
+                self.isCreatingSession = false
+                self.startingSessionPath = nil
+            }
+            self.sessionCreationError = "The Vipi host did not respond in time."
+        }
+    }
+
     private func requestHistory(for sessionID: String, direction: HistoryDirection) async {
         guard historyRequestsInFlight.insert(sessionID).inserted else { return }
         let payload = HistoryPayload(
@@ -445,6 +590,67 @@ final class AppStore {
         if queuedPromptsBySession[sessionID]?.isEmpty == true { queuedPromptsBySession.removeValue(forKey: sessionID) }
     }
 
+    private func reduceSessionCreationResponse(
+        _ payload: JSONValue,
+        requestID: String,
+        request: SessionCreationRequest
+    ) async {
+        switch request {
+        case .workspaces:
+            isLoadingWorkspaces = false
+            guard let response: WorkspaceListCommandResponse = decode(payload), response.ok,
+                  let result = response.result else {
+                sessionCreationError = commandResponseError(payload)
+                return
+            }
+            workspaceHome = result.home
+            registeredWorkspaces = result.workspaces
+            await browseWorkspace(result.home)
+        case .browse:
+            guard latestWorkspaceBrowseRequestID == requestID else { return }
+            isBrowsingWorkspace = false
+            guard let response: WorkspaceBrowseCommandResponse = decode(payload), response.ok,
+                  let result = response.result else {
+                sessionCreationError = commandResponseError(payload)
+                return
+            }
+            workspaceDirectory = WorkspaceDirectoryListing(
+                path: result.path,
+                parent: result.parent,
+                directories: result.directories
+            )
+        case .create(let path):
+            isCreatingSession = false
+            guard let response: SessionCreateCommandResponse = decode(payload), response.ok,
+                  let result = response.result else {
+                startingSessionPath = nil
+                startingSessionPaneID = nil
+                sessionCreationError = commandResponseError(payload)
+                return
+            }
+            startingSessionPath = path
+            startingSessionPaneID = result.paneID
+            registeredWorkspaces = Array(Set(registeredWorkspaces + [path])).sorted()
+            sessionCreationSucceeded = true
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(25))
+                guard let self, self.startingSessionPaneID == result.paneID else { return }
+                self.startingSessionPath = nil
+                self.startingSessionPaneID = nil
+                self.commandError = "The new Pi session did not finish starting."
+            }
+        }
+    }
+
+    private func commandResponseError(_ payload: JSONValue) -> String {
+        if case .object(let response) = payload,
+           case .object(let result) = response["result"],
+           case .string(let error) = result["error"] {
+            return error
+        }
+        return "The Vipi host rejected the request."
+    }
+
     private func decode<Value: Decodable>(_ payload: JSONValue) -> Value? {
         guard let data = try? JSONEncoder().encode(payload) else { return nil }
         let decoder = JSONDecoder()
@@ -510,6 +716,11 @@ final class AppStore {
                 }
                 let workingSessionIDs = Set(sessions.filter { $0.phase == .working }.map(\.id))
                 progressBySession = progressBySession.filter { workingSessionIDs.contains($0.key) }
+                if let paneID = startingSessionPaneID,
+                   sessions.contains(where: { $0.tmux.paneID == paneID }) {
+                    startingSessionPath = nil
+                    startingSessionPaneID = nil
+                }
             } catch {
                 connectionState = .disconnected("Invalid session snapshot")
             }
@@ -529,6 +740,11 @@ final class AppStore {
             return
         }
         if envelope.type == "session.response", let payload = envelope.payload {
+            if let id = envelope.id,
+               let request = pendingSessionCreationRequests.removeValue(forKey: id) {
+                await reduceSessionCreationResponse(payload, requestID: id, request: request)
+                return
+            }
             if case .object(let response) = payload,
                case .bool(false) = response["ok"] {
                 if case .object(let result) = response["result"],
@@ -546,6 +762,18 @@ final class AppStore {
         }
         if envelope.type == "error", case .object(let payload) = envelope.payload,
            case .string(let code) = payload["code"] {
+            if let id = envelope.id,
+               let request = pendingSessionCreationRequests.removeValue(forKey: id) {
+                switch request {
+                case .workspaces: isLoadingWorkspaces = false
+                case .browse: isBrowsingWorkspace = false
+                case .create:
+                    isCreatingSession = false
+                    startingSessionPath = nil
+                }
+                sessionCreationError = code
+                return
+            }
             if let id = envelope.id, let request = pendingHistoryRequests.removeValue(forKey: id) {
                 historyRequestsInFlight.remove(request.sessionID)
             }
@@ -566,6 +794,37 @@ final class AppStore {
         UserDefaults.standard.set(value, forKey: "vipi.simulatorToken")
         #endif
     }
+}
+
+private struct WorkspaceListCommandResponse: Decodable {
+    let ok: Bool
+    let result: WorkspaceListResult?
+}
+
+private struct WorkspaceListResult: Decodable {
+    let home: String
+    let workspaces: [String]
+}
+
+private struct WorkspaceBrowseCommandResponse: Decodable {
+    let ok: Bool
+    let result: WorkspaceBrowseResult?
+}
+
+private struct WorkspaceBrowseResult: Decodable {
+    let path: String
+    let parent: String?
+    let directories: [String]
+}
+
+private struct SessionCreateCommandResponse: Decodable {
+    let ok: Bool
+    let result: SessionCreateResult?
+}
+
+private struct SessionCreateResult: Decodable {
+    let cwd: String
+    let paneID: String
 }
 
 private struct SessionSnapshot: Decodable {

@@ -10,6 +10,7 @@ import { readTmuxRegistry, setTmuxSessionUnread } from "./registry.js";
 import { createPairingPayload } from "./pairing.js";
 import { mobileActivityForTool, normalizeHistory } from "./normalization.js";
 import { readSessionBranch } from "./session-history.js";
+import { browseWorkspace, launchSession, listWorkspaces } from "./workspaces.js";
 
 const host = process.env.VIPI_HOST ?? "127.0.0.1";
 const port = Number(process.env.VIPI_PORT ?? "8765");
@@ -41,6 +42,7 @@ const attachmentTTL = 15 * 60 * 1000;
 type PendingAttachment = { id: string; digest: string; mimeType: string; path: string; sessionID: string; expiresAt: number };
 const pendingAttachments = new Map<string, PendingAttachment>();
 const requestAttachments = new Map<string, string[]>();
+let sessionCreationInFlight = false;
 mkdirSync(attachmentDirectory, { recursive: true, mode: 0o700 });
 
 const server = createServer((request, response) => {
@@ -260,6 +262,59 @@ wss.on("connection", (socket) => {
 
     if (message.type === "sessions.list") {
       socket.send(JSON.stringify(envelope("sessions.snapshot", { sessions: mergedSessions() }, message.id, ++sequence)));
+      return;
+    }
+    if (message.type === "workspaces.list") {
+      socket.send(JSON.stringify(envelope("session.response", {
+        requestID: message.id,
+        ok: true,
+        result: listWorkspaces(),
+      }, message.id, ++sequence)));
+      return;
+    }
+    if (message.type === "workspaces.browse") {
+      try {
+        socket.send(JSON.stringify(envelope("session.response", {
+          requestID: message.id,
+          ok: true,
+          result: browseWorkspace(message.payload?.path),
+        }, message.id, ++sequence)));
+      } catch (error) {
+        socket.send(JSON.stringify(envelope("session.response", {
+          requestID: message.id,
+          ok: false,
+          result: { error: error instanceof Error ? error.message : "The directory could not be opened." },
+        }, message.id, ++sequence)));
+      }
+      return;
+    }
+    if (message.type === "session.create") {
+      if (sessionCreationInFlight) {
+        socket.send(JSON.stringify(envelope("session.response", {
+          requestID: message.id, ok: false, result: { error: "Another session is already starting." },
+        }, message.id, ++sequence)));
+        return;
+      }
+      sessionCreationInFlight = true;
+      void launchSession(message.payload?.cwd)
+        .then((result) => {
+          if (socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify(envelope("session.response", {
+              requestID: message.id, ok: true, result,
+            }, message.id, ++sequence)));
+          }
+          broadcast("sessions.snapshot", { sessions: mergedSessions() });
+        })
+        .catch((error) => {
+          if (socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify(envelope("session.response", {
+              requestID: message.id,
+              ok: false,
+              result: { error: error instanceof Error ? error.message : "The Pi session could not be started." },
+            }, message.id, ++sequence)));
+          }
+        })
+        .finally(() => { sessionCreationInFlight = false; });
       return;
     }
     if (message.type === "auth.rotate") {

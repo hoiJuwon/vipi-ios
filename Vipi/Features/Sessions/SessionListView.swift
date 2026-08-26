@@ -3,15 +3,26 @@ import SwiftUI
 struct SessionListView: View {
     @Environment(AppStore.self) private var store
     @State private var searchText = ""
+    @State private var showsNewSession = CommandLine.arguments.contains("--session-picker-preview")
 
     var body: some View {
         ZStack {
             VipiBackdrop()
-            if filteredSessions.isEmpty {
+            if filteredSessions.isEmpty && store.startingSessionPath == nil {
                 emptyState
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
+                        if let path = store.startingSessionPath,
+                           searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            StartingSessionRow(path: path)
+                            if !filteredSessions.isEmpty {
+                                Divider()
+                                    .overlay(VipiTheme.stroke.opacity(0.7))
+                                    .padding(.horizontal, 16)
+                            }
+                        }
+
                         ForEach(Array(filteredSessions.enumerated()), id: \.element.id) { index, session in
                             NavigationLink(value: session) {
                                 SessionRow(
@@ -46,6 +57,23 @@ struct SessionListView: View {
                     .padding(.vertical, 7)
                     .vipiGlass(in: Capsule())
             }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { showsNewSession = true } label: {
+                    Image(systemName: "plus")
+                        .font(.body.weight(.semibold))
+                        .frame(width: 44, height: 44)
+                }
+                .controlSize(.large)
+                .disabled(!canCreateSession)
+                .accessibilityIdentifier("sessions.add")
+                .accessibilityLabel("New session")
+            }
+        }
+        .sheet(isPresented: $showsNewSession) {
+            NewSessionSheet()
+                .environment(store)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
         }
     }
 
@@ -60,6 +88,13 @@ struct SessionListView: View {
             .accessibilityIdentifier("sessions.empty")
         } else {
             ContentUnavailableView.search(text: searchText)
+        }
+    }
+
+    private var canCreateSession: Bool {
+        switch store.connectionState {
+        case .connected, .demo: true
+        case .connecting, .disconnected: false
         }
     }
 
@@ -86,6 +121,242 @@ struct SessionListView: View {
     private func accessibilityValue(for session: RemoteSession) -> String {
         let unread = session.hasUnreadResponse ? ", 읽지 않은 응답 있음" : ""
         return "\(preview(for: session)), \(SessionListTimeFormatter.string(from: session.lastActivityAt))\(unread)"
+    }
+}
+
+private struct StartingSessionRow: View {
+    let path: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ProgressView()
+                .controlSize(.small)
+                .tint(VipiTheme.accent)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Starting session…")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(VipiTheme.primary)
+                Text(path)
+                    .font(.caption)
+                    .foregroundStyle(VipiTheme.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            Spacer(minLength: 8)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity, minHeight: 76, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("sessions.starting")
+        .accessibilityLabel("Starting new session")
+        .accessibilityValue(path)
+    }
+}
+
+private struct NewSessionSheet: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedPath: String?
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                VipiBackdrop()
+                List {
+                    if !store.registeredWorkspaces.isEmpty {
+                        Section("Workspaces") {
+                            ForEach(store.registeredWorkspaces, id: \.self) { path in
+                                Button {
+                                    selectedPath = path
+                                    Task { await store.browseWorkspace(path) }
+                                } label: {
+                                    workspaceRow(path)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityIdentifier("workspace.registered.\(path)")
+                            }
+                        }
+                    }
+
+                    Section("Browse folders") {
+                        if store.isLoadingWorkspaces && store.workspaceDirectory == nil {
+                            loadingRow("Loading workspaces…")
+                        } else if let directory = store.workspaceDirectory {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(directoryName(directory.path))
+                                    .font(.headline)
+                                    .foregroundStyle(VipiTheme.primary)
+                                Text(abbreviatedPath(directory.path))
+                                    .font(.caption)
+                                    .foregroundStyle(VipiTheme.secondary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                            }
+                            .padding(.vertical, 4)
+                            .accessibilityIdentifier("workspace.current")
+
+                            if let parent = directory.parent {
+                                Button {
+                                    selectedPath = parent
+                                    Task { await store.browseWorkspace(parent) }
+                                } label: {
+                                    Label("Up one level", systemImage: "arrow.up.left")
+                                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityIdentifier("workspace.parent")
+                            }
+
+                            ForEach(directory.directories, id: \.self) { path in
+                                Button {
+                                    selectedPath = path
+                                    Task { await store.browseWorkspace(path) }
+                                } label: {
+                                    HStack(spacing: 12) {
+                                        Image(systemName: "folder")
+                                            .foregroundStyle(VipiTheme.secondary)
+                                        Text(directoryName(path))
+                                            .foregroundStyle(VipiTheme.primary)
+                                            .lineLimit(1)
+                                        Spacer(minLength: 8)
+                                        Image(systemName: "chevron.right")
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(VipiTheme.secondary)
+                                    }
+                                    .frame(minHeight: 44)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityIdentifier("workspace.folder.\(path)")
+                            }
+
+                            if directory.directories.isEmpty && !store.isBrowsingWorkspace {
+                                Text("No subfolders")
+                                    .font(.subheadline)
+                                    .foregroundStyle(VipiTheme.secondary)
+                                    .frame(maxWidth: .infinity, minHeight: 54, alignment: .center)
+                            }
+                        }
+                    }
+
+                    if let error = store.sessionCreationError {
+                        Section {
+                            Label(error, systemImage: "exclamationmark.circle")
+                                .font(.subheadline)
+                                .foregroundStyle(VipiTheme.danger)
+                                .accessibilityIdentifier("session.creation.error")
+                        }
+                    }
+                }
+                .scrollContentBackground(.hidden)
+                .disabled(store.isCreatingSession)
+
+                if store.isBrowsingWorkspace {
+                    ProgressView()
+                        .controlSize(.large)
+                        .padding(18)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .accessibilityLabel("Loading folder")
+                }
+            }
+            .navigationTitle("New Session")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark")
+                            .frame(width: 44, height: 44)
+                    }
+                    .disabled(store.isCreatingSession)
+                    .accessibilityLabel("Close")
+                }
+            }
+            .safeAreaInset(edge: .bottom) {
+                startButton
+            }
+        }
+        .interactiveDismissDisabled(store.isCreatingSession)
+        .task { await store.prepareSessionCreation() }
+        .onChange(of: store.workspaceDirectory?.path) { _, path in
+            if let path { selectedPath = path }
+        }
+        .onChange(of: store.sessionCreationSucceeded) { _, succeeded in
+            if succeeded { dismiss() }
+        }
+    }
+
+    private var startButton: some View {
+        VStack(spacing: 0) {
+            Divider().overlay(VipiTheme.stroke)
+            Button {
+                guard let selectedPath else { return }
+                Task { await store.createSession(in: selectedPath) }
+            } label: {
+                HStack(spacing: 8) {
+                    if store.isCreatingSession {
+                        ProgressView().tint(VipiTheme.primaryActionForeground)
+                        Text("Starting…")
+                    } else {
+                        Image(systemName: "plus")
+                        Text("Start in \(directoryName(selectedPath ?? ""))")
+                    }
+                }
+                .font(.body.weight(.semibold))
+                .frame(maxWidth: .infinity, minHeight: 50)
+            }
+            .buttonStyle(.borderedProminent)
+            .buttonBorderShape(.roundedRectangle(radius: 16))
+            .tint(VipiTheme.primaryAction)
+            .foregroundStyle(VipiTheme.primaryActionForeground)
+            .disabled(selectedPath == nil || store.isCreatingSession || store.isLoadingWorkspaces)
+            .accessibilityIdentifier("session.create")
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+        }
+        .background(.bar)
+    }
+
+    private func workspaceRow(_ path: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "folder.fill")
+                .foregroundStyle(VipiTheme.primary)
+                .frame(width: 28, height: 28)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(directoryName(path))
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(VipiTheme.primary)
+                    .lineLimit(1)
+                Text(abbreviatedPath(URL(fileURLWithPath: path).deletingLastPathComponent().path))
+                    .font(.caption)
+                    .foregroundStyle(VipiTheme.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            Spacer(minLength: 8)
+            Image(systemName: selectedPath == path ? "checkmark.circle.fill" : "chevron.right")
+                .foregroundStyle(selectedPath == path ? VipiTheme.primary : VipiTheme.secondary)
+        }
+        .frame(minHeight: 50)
+        .contentShape(Rectangle())
+    }
+
+    private func loadingRow(_ text: String) -> some View {
+        HStack(spacing: 10) {
+            ProgressView().controlSize(.small)
+            Text(text).foregroundStyle(VipiTheme.secondary)
+        }
+        .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
+    }
+
+    private func directoryName(_ path: String) -> String {
+        let name = URL(fileURLWithPath: path).lastPathComponent
+        return name.isEmpty ? path : name
+    }
+
+    private func abbreviatedPath(_ path: String) -> String {
+        guard let home = store.workspaceHome, path.hasPrefix(home) else { return path }
+        let suffix = String(path.dropFirst(home.count))
+        return suffix.isEmpty ? "~" : "~\(suffix)"
     }
 }
 

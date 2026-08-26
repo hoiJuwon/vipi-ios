@@ -25,7 +25,7 @@ Tailnet device
   → user account tools/files
 ```
 
-The device token is defense in depth in addition to tailnet membership. The app persists it as a this-device-only Keychain item and supports authenticated rotation. The host enforces loopback binding by default, rate limits sockets, never logs payloads or bearer values, and is intended to sit behind tailnet-only Tailscale Serve. Commands are allowlisted and correlated without opening a second session writer.
+The device token is defense in depth in addition to tailnet membership. The app persists it as a this-device-only Keychain item and supports authenticated rotation. The host enforces loopback binding by default, rate limits sockets, never logs payloads or bearer values, and is intended to sit behind tailnet-only Tailscale Serve. Commands are allowlisted and correlated without opening a second session writer. Remote folder browsing resolves canonical directories and is limited to the host user's home directory plus explicitly registered workspace roots.
 
 ## Protocol evolution
 
@@ -36,6 +36,8 @@ Assistant excerpts selected with `Add to Chat` travel only with the next `sessio
 Blocking extension interactions (`confirm`, `select`, and `input`) are bridged only while an authenticated mobile socket is present. Requests are ephemeral rather than replayed, responses are correlated to the originating runtime, and disconnect or timeout falls back to the original terminal UI. This prevents stale permission requests from reappearing after reconnect.
 
 Photo attachments use an authenticated `POST /attachments` endpoint on the existing loopback host through the same Tailscale Serve origin. iOS downsamples and re-encodes selected photos before upload, strips source metadata, and sends only short-lived attachment IDs in the WebSocket prompt. The host stores each upload as a private temporary file, binds it to one session, verifies its SHA-256 digest, and deletes it after runtime acceptance or expiry. The existing Pi extension converts the file to Pi `ImageContent` and calls `pi.sendUserMessage`, so the tmux Pi process remains the only JSONL writer. Mobile history receives only image digests and MIME types, never the base64 payload.
+
+Authenticated `session.create` starts a brand-new regular Pi process in a tmux window at the selected canonical directory. The host writes the same provisional registry row used by `pi-session-tree`, then releases a short startup gate so the session-tree extension atomically replaces it with Pi's real session ID and JSONL path. This creates a new writer rather than attaching a second writer to any existing JSONL session.
 
 ## Deliberate future scope
 

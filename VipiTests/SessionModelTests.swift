@@ -59,6 +59,23 @@ final class SessionModelTests: XCTestCase {
         )
     }
 
+    func testDemoSessionCreationLoadsWorkspacesAndAddsSession() async {
+        let store = await AppStore(startsInDemoMode: true)
+        await store.prepareSessionCreation()
+        let workspaces = await store.registeredWorkspaces
+        XCTAssertTrue(workspaces.contains("/Users/choijuwon/vipi-ios"))
+
+        await store.browseWorkspace("/Users/choijuwon/vipi-ios")
+        let listing = await store.workspaceDirectory
+        XCTAssertEqual(listing?.path, "/Users/choijuwon/vipi-ios")
+
+        await store.createSession(in: "/Users/choijuwon/vipi-ios")
+        let sessions = await store.sessions
+        XCTAssertTrue(sessions.contains { $0.name == "기타 / 새 세션" && $0.cwd == "/Users/choijuwon/vipi-ios" })
+        let succeeded = await store.sessionCreationSucceeded
+        XCTAssertTrue(succeeded)
+    }
+
     func testWorkspaceGroupingKeepsWorkingWorkspaceFirst() async {
         let store = await AppStore(startsInDemoMode: true)
         let groups = await store.workspaceGroups
