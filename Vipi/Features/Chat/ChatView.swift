@@ -732,7 +732,7 @@ private struct WorkingStatusView: View {
                     .contentTransition(.interpolate)
                     .animation(.easeInOut(duration: 0.2), value: activity)
                 Text(elapsedText(at: context.date))
-                    .font(.caption.monospacedDigit())
+                    .font(.caption.monospacedDigit().italic())
                     .foregroundStyle(VipiTheme.secondary)
                 LiquidOrbView()
                     .frame(width: 44, height: 44)
@@ -740,7 +740,7 @@ private struct WorkingStatusView: View {
                     .frame(width: 27, height: 13, alignment: .leading)
                     .clipped()
                     .shadow(color: VipiTheme.accent.opacity(0.38), radius: 6)
-                    .padding(.top, 2)
+                    .padding(.top, 7)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 3)

@@ -166,11 +166,7 @@ struct RemoteInteractionCard: View {
             controls
         }
         .padding(13)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(VipiTheme.stroke, lineWidth: 0.75)
-        }
+        .vipiGlass(in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .shadow(color: .black.opacity(0.12), radius: 14, y: 5)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("interaction.card")
