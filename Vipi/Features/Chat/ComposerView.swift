@@ -97,8 +97,17 @@ struct ComposerView: View {
                 .accessibilityIdentifier("chat.imageAttachments")
             }
 
-            HStack(alignment: .center, spacing: 8) {
-                if interaction == nil {
+            if interaction == nil {
+                VStack(alignment: .leading, spacing: 0) {
+                    TextField(phase == .offline ? "Reconnecting session…" : "Message Pi…", text: $draft, axis: .vertical)
+                        .accessibilityIdentifier("chat.composer")
+                        .accessibilityLabel("Message Pi")
+                        .lineLimit(1...6)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 4)
+                        .disabled(phase == .offline)
+
+                    HStack(alignment: .center, spacing: 8) {
                     Menu {
                         Button {
                             insertGoalCommand()
@@ -125,17 +134,9 @@ struct ComposerView: View {
                     .disabled(phase == .offline)
                     .accessibilityIdentifier("chat.add")
                     .accessibilityLabel("Add to message")
-                }
 
-                TextField(phase == .offline ? "Reconnecting session…" : "Message Pi…", text: $draft, axis: .vertical)
-                    .accessibilityIdentifier("chat.composer")
-                    .accessibilityLabel("Message Pi")
-                    .lineLimit(1...6)
-                    .padding(.leading, 6)
-                    .padding(.vertical, 10)
-                    .disabled(phase == .offline || interaction != nil)
+                    Spacer(minLength: 8)
 
-                if interaction == nil {
                     Button {
                         if showsStop { onStop() } else { onSend(isWorking ? .followUp : .prompt) }
                     } label: {
@@ -151,7 +152,8 @@ struct ComposerView: View {
                     .disabled(phase == .offline || (!isWorking && trimmedDraft.isEmpty && imageAttachments.isEmpty))
                     .accessibilityIdentifier(showsStop ? "chat.stop" : "chat.send")
                     .accessibilityLabel(showsStop ? "Stop current run" : "Send message")
-                    .accessibilityHint(showsStop ? "Stops the active Pi response" : isWorking ? "Queues this message after the active response" : "Sends a prompt to Pi")
+                        .accessibilityHint(showsStop ? "Stops the active Pi response" : isWorking ? "Queues this message after the active response" : "Sends a prompt to Pi")
+                    }
                 }
             }
         }

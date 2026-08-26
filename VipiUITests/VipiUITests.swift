@@ -76,7 +76,8 @@ final class VipiUITests: XCTestCase {
         XCTAssertTrue(composer.waitForExistence(timeout: 5))
         let add = app.buttons["chat.add"]
         XCTAssertTrue(add.isHittable)
-        XCTAssertEqual(add.frame.midY, composer.frame.midY, accuracy: 1)
+        XCTAssertGreaterThanOrEqual(add.frame.minY, composer.frame.maxY)
+        XCTAssertLessThan(composer.frame.minX, add.frame.maxX)
         XCTAssertGreaterThanOrEqual(add.frame.width, 44)
         XCTAssertGreaterThanOrEqual(add.frame.height, 44)
         add.tap()
@@ -177,13 +178,14 @@ final class VipiUITests: XCTestCase {
         XCTAssertTrue(composer.isHittable)
         let add = app.buttons["chat.add"]
         XCTAssertTrue(add.isHittable)
-        XCTAssertEqual(add.frame.midY, composer.frame.midY, accuracy: 1)
+        XCTAssertGreaterThanOrEqual(add.frame.minY, composer.frame.maxY)
+        XCTAssertLessThan(composer.frame.minX, add.frame.maxX)
         XCTAssertGreaterThanOrEqual(add.frame.width, 44)
         XCTAssertGreaterThanOrEqual(add.frame.height, 44)
         let stop = app.buttons["chat.stop"]
         XCTAssertEqual(stop.label, "Stop current run")
         XCTAssertTrue(stop.isEnabled)
-        XCTAssertEqual(composer.frame.midY, stop.frame.midY, accuracy: 1)
+        XCTAssertEqual(add.frame.midY, stop.frame.midY, accuracy: 1)
         XCTAssertGreaterThanOrEqual(stop.frame.width, 44)
         XCTAssertGreaterThanOrEqual(stop.frame.height, 44)
         XCTAssertFalse(app.buttons["chat.send"].exists)
@@ -216,11 +218,12 @@ final class VipiUITests: XCTestCase {
         let card = app.descendants(matching: .any)["interaction.card"]
         XCTAssertTrue(card.waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Permission required"].exists)
-        XCTAssertLessThan(card.frame.maxY, app.textFields["chat.composer"].frame.minY)
+        XCTAssertFalse(app.textFields["chat.composer"].exists)
         let allow = app.buttons["Allow"]
         XCTAssertTrue(allow.isHittable)
         allow.tap()
         XCTAssertFalse(card.waitForExistence(timeout: 1))
+        XCTAssertTrue(app.textFields["chat.composer"].waitForExistence(timeout: 3))
     }
 
     func testManualScrollResynchronizesAssistantNavigation() {
