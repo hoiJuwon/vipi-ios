@@ -367,7 +367,14 @@ export default function vipiBridge(pi: ExtensionAPI) {
     runtime.reconnect = undefined;
     const socket = runtime.socket;
     runtime.socket = undefined;
-    socket?.removeAllListeners();
-    socket?.close();
+    if (socket) {
+      socket.removeAllListeners();
+      // ws emits an asynchronous error when close() is called while the
+      // handshake is still connecting. Keep a sink installed during teardown
+      // so /reload and short-lived RPC sessions cannot crash the Pi process.
+      socket.on("error", () => {});
+      if (socket.readyState === WebSocket.CONNECTING) socket.terminate();
+      else socket.close();
+    }
   });
 }
