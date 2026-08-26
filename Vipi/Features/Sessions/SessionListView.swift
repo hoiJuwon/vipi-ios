@@ -42,8 +42,12 @@ struct SessionListView: View {
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 HStack(spacing: 8) {
-                    Image(systemName: "circle.hexagongrid.fill")
-                        .foregroundStyle(VipiTheme.accent)
+                    Image("BrandIcon")
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 22, height: 22)
+                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        .accessibilityHidden(true)
                     ConnectionCapsule(state: store.connectionState)
                 }
                 .padding(.horizontal, 11)
