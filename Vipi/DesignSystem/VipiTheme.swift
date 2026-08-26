@@ -18,6 +18,8 @@ enum VipiTheme {
     static let primary = Color.primary
     static let secondary = Color.secondary
     static let userBubble = adaptive(light: 0x26313D, dark: 0x20262F)
+    static let primaryAction = adaptive(light: 0x205F80, dark: 0x2D6F91)
+    static let primaryActionForeground = Color.white
     static let accent = adaptive(light: 0x1677C8, dark: 0x8EEBFF)
     static let accentForeground = adaptive(light: 0xFFFFFF, dark: 0x06131F)
     static let cyan = Color(hex: 0x4F9DFF)

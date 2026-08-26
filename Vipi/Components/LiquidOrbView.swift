@@ -7,8 +7,16 @@ struct LiquidOrbView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        LiquidOrbSurface(isPaused: reduceMotion)
-            .accessibilityHidden(true)
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: reduceMotion)) { context in
+            let time = context.date.timeIntervalSinceReferenceDate
+            let wave = reduceMotion ? 0 : sin(time * .pi * 2 / 1.05)
+
+            LiquidOrbSurface(isPaused: reduceMotion)
+                .scaleEffect(x: 1 + wave * 0.16, y: 1 - wave * 0.08)
+                .offset(x: wave * 4.5)
+                .opacity(reduceMotion ? 0.9 : 0.82 + abs(wave) * 0.18)
+        }
+        .accessibilityHidden(true)
     }
 }
 
