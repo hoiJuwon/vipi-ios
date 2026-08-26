@@ -191,6 +191,14 @@ final class AppStore {
         activityItems = MockData.activity
         connectionState = .demo
         #if DEBUG
+        if CommandLine.arguments.contains("--markdown-table-preview") {
+            messagesBySession["mobile"] = [ChatMessage(
+                id: "markdown-table-preview",
+                role: .assistant,
+                text: MockData.markdownTablePreview,
+                timestamp: .now
+            )]
+        }
         if CommandLine.arguments.contains("--interaction-preview") {
             pendingInteractions = [RemoteInteraction(
                 requestID: "preview-permission",

@@ -502,6 +502,18 @@ private struct SentImageGrid: View {
     }
 }
 
+enum MobileMarkdownTableAlignment: Equatable {
+    case leading
+    case center
+    case trailing
+}
+
+struct MobileMarkdownTable: Equatable {
+    let headers: [String]
+    let alignments: [MobileMarkdownTableAlignment]
+    let rows: [[String]]
+}
+
 enum MobileMarkdownBlock: Equatable {
     case heading(level: Int, text: String)
     case paragraph(String)
@@ -509,6 +521,7 @@ enum MobileMarkdownBlock: Equatable {
     case orderedItem(number: String, text: String)
     case quote(String)
     case code(language: String?, text: String)
+    case table(MobileMarkdownTable)
     case divider
 }
 
@@ -541,6 +554,10 @@ enum MobileMarkdownParser {
                 blocks.append(.code(language: language.isEmpty ? nil : language, text: codeLines.joined(separator: "\n")))
             } else if trimmed.isEmpty {
                 flushParagraph()
+            } else if let table = table(from: lines, startingAt: index) {
+                flushParagraph()
+                blocks.append(.table(table.value))
+                index = table.lastLineIndex
             } else if let heading = heading(from: trimmed) {
                 flushParagraph()
                 blocks.append(.heading(level: heading.level, text: heading.text))
@@ -593,6 +610,75 @@ enum MobileMarkdownParser {
         let number = String(line[..<dot])
         guard !number.isEmpty, number.allSatisfy(\.isNumber), line[line.index(after: dot)].isWhitespace else { return nil }
         return (number + ".", String(line[line.index(after: dot)...]).trimmingCharacters(in: .whitespaces))
+    }
+
+    private static func table(
+        from lines: [String],
+        startingAt index: Int
+    ) -> (value: MobileMarkdownTable, lastLineIndex: Int)? {
+        guard index + 1 < lines.count,
+              let headers = tableCells(from: lines[index]),
+              let delimiter = tableCells(from: lines[index + 1]),
+              headers.count == delimiter.count,
+              headers.count >= 2
+        else { return nil }
+
+        let alignments = delimiter.compactMap { tableAlignment(from: $0) }
+        guard alignments.count == headers.count else { return nil }
+
+        var rows: [[String]] = []
+        var cursor = index + 2
+        while cursor < lines.count, let cells = tableCells(from: lines[cursor]) {
+            guard !lines[cursor].trimmingCharacters(in: .whitespaces).isEmpty else { break }
+            rows.append((0..<headers.count).map { $0 < cells.count ? cells[$0] : "" })
+            cursor += 1
+        }
+        return (
+            MobileMarkdownTable(headers: headers, alignments: alignments, rows: rows),
+            cursor - 1
+        )
+    }
+
+    private static func tableAlignment(from delimiter: String) -> MobileMarkdownTableAlignment? {
+        let value = delimiter.trimmingCharacters(in: .whitespaces)
+        let hasLeadingColon = value.hasPrefix(":")
+        let hasTrailingColon = value.hasSuffix(":")
+        let rule = value.trimmingCharacters(in: CharacterSet(charactersIn: ":"))
+        guard rule.count >= 3, rule.allSatisfy({ $0 == "-" }) else { return nil }
+        if hasLeadingColon && hasTrailingColon { return .center }
+        if hasTrailingColon { return .trailing }
+        return .leading
+    }
+
+    private static func tableCells(from line: String) -> [String]? {
+        var value = line.trimmingCharacters(in: .whitespaces)
+        guard value.contains("|") else { return nil }
+        if value.hasPrefix("|") { value.removeFirst() }
+        if value.hasSuffix("|") { value.removeLast() }
+
+        var cells: [String] = []
+        var cell = ""
+        var escaped = false
+        var inCode = false
+        for character in value {
+            if escaped {
+                cell.append(character)
+                escaped = false
+            } else if character == "\\" {
+                escaped = true
+            } else if character == "`" {
+                inCode.toggle()
+                cell.append(character)
+            } else if character == "|", !inCode {
+                cells.append(cell.trimmingCharacters(in: .whitespaces))
+                cell = ""
+            } else {
+                cell.append(character)
+            }
+        }
+        if escaped { cell.append("\\") }
+        cells.append(cell.trimmingCharacters(in: .whitespaces))
+        return cells.count >= 2 ? cells : nil
     }
 }
 
@@ -667,6 +753,9 @@ private struct MarkdownMessageView: View {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .stroke(VipiTheme.stroke, lineWidth: 0.75)
             }
+        case let .table(table):
+            MarkdownTableView(table: table, onAddToChat: onAddToChat)
+                .messageAnchor(isAnchor ? "assistant.message.\(messageID)" : nil)
         case .divider:
             Divider().overlay(VipiTheme.stroke).padding(.vertical, 3)
         }
@@ -677,16 +766,97 @@ private struct MarkdownMessageView: View {
     }
 }
 
+private struct MarkdownTableView: View {
+    let table: MobileMarkdownTable
+    let onAddToChat: (String) -> Void
+
+    private var columnWidths: [CGFloat] {
+        let columns = table.headers.indices.map { index in
+            [table.headers[index]] + table.rows.map { index < $0.count ? $0[index] : "" }
+        }
+        let natural = columns.map { values in
+            let longest = values.map(displayLength).max() ?? 0
+            return min(220, max(60, longest * 7.2 + 20))
+        }
+        let available = min(UIScreen.main.bounds.width - 32, 430)
+        let total = natural.reduce(0, +)
+        guard total > available, table.headers.count <= 3 else { return natural }
+
+        let minimums = table.alignments.map { $0 == .trailing ? CGFloat(52) : CGFloat(82) }
+        let minimumTotal = minimums.reduce(0, +)
+        guard minimumTotal < available else { return minimums }
+        let capacity = zip(natural, minimums).map { $0.0 - $0.1 }.reduce(0, +)
+        guard capacity > 0 else { return natural }
+        let ratio = min(1, (total - available) / capacity)
+        return zip(natural, minimums).map { width, minimum in
+            width - (width - minimum) * ratio
+        }
+    }
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            Grid(alignment: .topLeading, horizontalSpacing: 0, verticalSpacing: 0) {
+                tableRow(table.headers, isHeader: true)
+                ForEach(Array(table.rows.enumerated()), id: \.offset) { _, row in
+                    tableRow(row, isHeader: false)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("markdown.table")
+        .accessibilityLabel("Table")
+    }
+
+    private func tableRow(_ cells: [String], isHeader: Bool) -> some View {
+        GridRow {
+            ForEach(table.headers.indices, id: \.self) { index in
+                SelectableAssistantText(
+                    source: index < cells.count ? cells[index] : "",
+                    style: isHeader ? .tableHeader : .body,
+                    alignment: textAlignment(table.alignments[index]),
+                    onAddToChat: onAddToChat
+                )
+                .padding(.horizontal, 9)
+                .padding(.vertical, 8)
+                .frame(width: columnWidths[index], alignment: .topLeading)
+                .background(isHeader ? VipiTheme.stroke.opacity(0.48) : Color.clear)
+                .overlay {
+                    Rectangle().stroke(VipiTheme.stroke, lineWidth: 0.5)
+                }
+            }
+        }
+    }
+
+    private func textAlignment(_ alignment: MobileMarkdownTableAlignment) -> NSTextAlignment {
+        switch alignment {
+        case .leading: .natural
+        case .center: .center
+        case .trailing: .right
+        }
+    }
+
+    private func displayLength(_ value: String) -> CGFloat {
+        value.reduce(0) { length, character in
+            length + (character.isASCII ? 1 : 1.75)
+        }
+    }
+}
+
 private struct SelectableAssistantText: UIViewRepresentable {
     enum Style: Equatable {
         case body
         case heading(Int)
         case quote
+        case tableHeader
 
         var baseFont: UIFont {
             switch self {
             case .body, .quote:
                 UIFont.preferredFont(forTextStyle: .body)
+            case .tableHeader:
+                UIFont.preferredFont(forTextStyle: .subheadline).withTraits(.traitBold)
             case .heading(1):
                 UIFont.preferredFont(forTextStyle: .title3).withTraits(.traitBold)
             case .heading(2):
@@ -708,6 +878,7 @@ private struct SelectableAssistantText: UIViewRepresentable {
 
     let source: String
     let style: Style
+    var alignment: NSTextAlignment = .natural
     let onAddToChat: (String) -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
@@ -729,7 +900,7 @@ private struct SelectableAssistantText: UIViewRepresentable {
 
     func updateUIView(_ textView: UITextView, context: Context) {
         context.coordinator.parent = self
-        let attributed = Self.makeAttributedText(source, style: style)
+        let attributed = Self.makeAttributedText(source, style: style, alignment: alignment)
         if textView.attributedText != attributed { textView.attributedText = attributed }
     }
 
@@ -739,10 +910,17 @@ private struct SelectableAssistantText: UIViewRepresentable {
         return CGSize(width: width, height: ceil(size.height))
     }
 
-    private static func makeAttributedText(_ source: String, style: Style) -> NSAttributedString {
+    private static func makeAttributedText(
+        _ source: String,
+        style: Style,
+        alignment: NSTextAlignment
+    ) -> NSAttributedString {
         let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
         guard let parsed = try? AttributedString(markdown: source, options: options) else {
-            return NSAttributedString(string: source, attributes: attributes(font: style.baseFont, color: style.color))
+            return NSAttributedString(
+                string: source,
+                attributes: attributes(font: style.baseFont, color: style.color, alignment: alignment)
+            )
         }
         let result = NSMutableAttributedString()
         for run in parsed.runs {
@@ -753,16 +931,21 @@ private struct SelectableAssistantText: UIViewRepresentable {
                 if intent.contains(.emphasized) { font = font.withTraits(.traitItalic) }
                 if intent.contains(.code) { font = UIFont.monospacedSystemFont(ofSize: font.pointSize * 0.92, weight: .regular) }
             }
-            var runAttributes = attributes(font: font, color: style.color)
+            var runAttributes = attributes(font: font, color: style.color, alignment: alignment)
             if let link = run.link { runAttributes[.link] = link }
             result.append(NSAttributedString(string: String(parsed[run.range].characters), attributes: runAttributes))
         }
         return result
     }
 
-    private static func attributes(font: UIFont, color: UIColor) -> [NSAttributedString.Key: Any] {
+    private static func attributes(
+        font: UIFont,
+        color: UIColor,
+        alignment: NSTextAlignment
+    ) -> [NSAttributedString.Key: Any] {
         let paragraph = NSMutableParagraphStyle()
         paragraph.lineSpacing = 3
+        paragraph.alignment = alignment
         return [.font: font, .foregroundColor: color, .paragraphStyle: paragraph]
     }
 

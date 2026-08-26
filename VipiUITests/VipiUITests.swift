@@ -14,6 +14,9 @@ final class VipiUITests: XCTestCase {
         if name.contains("SplashPreview") {
             app.launchArguments += ["--splash-preview"]
         }
+        if name.contains("MarkdownTable") {
+            app.launchArguments += ["--chat-preview", "--markdown-table-preview"]
+        }
         if name.contains("LiveHost") {
             app.launchEnvironment["VIPI_E2E_PAIRING"] = #"{"host":"http://127.0.0.1:9876","token":"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ"}"#
         }
@@ -25,6 +28,14 @@ final class VipiUITests: XCTestCase {
         XCTAssertTrue(splash.waitForExistence(timeout: 5))
         XCTAssertEqual(splash.label, "vipi")
         XCTAssertFalse(app.navigationBars.firstMatch.isHittable)
+    }
+
+    func testMarkdownTableRendersAsCellsInsteadOfRawPipes() {
+        let firstHeader = app.textViews["판타지 군"]
+        XCTAssertTrue(firstHeader.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.textViews["예시 관계·상황"].exists)
+        XCTAssertTrue(app.textViews["10"].firstMatch.exists)
+        XCTAssertFalse(app.textViews.matching(NSPredicate(format: "label CONTAINS %@", "|---|")).firstMatch.exists)
     }
 
     func testOpenSessionAndSendPrompt() {

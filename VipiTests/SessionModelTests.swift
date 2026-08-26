@@ -36,6 +36,29 @@ final class SessionModelTests: XCTestCase {
         )
     }
 
+    func testMobileMarkdownParsesTableRowsAndAlignment() {
+        let source = """
+        | 판타지 군 | 예시 관계·상황 | 수량 |
+        |---|---|---:|
+        | 가까운 사람 | best friend, neighbor, friend’s sibling | 10 |
+        | 적대적 긴장 | rival, enemy, adult bully | 10 |
+        """
+
+        XCTAssertEqual(
+            MobileMarkdownParser.parse(source),
+            [
+                .table(MobileMarkdownTable(
+                    headers: ["판타지 군", "예시 관계·상황", "수량"],
+                    alignments: [.leading, .leading, .trailing],
+                    rows: [
+                        ["가까운 사람", "best friend, neighbor, friend’s sibling", "10"],
+                        ["적대적 긴장", "rival, enemy, adult bully", "10"]
+                    ]
+                ))
+            ]
+        )
+    }
+
     func testWorkspaceGroupingKeepsWorkingWorkspaceFirst() async {
         let store = await AppStore(startsInDemoMode: true)
         let groups = await store.workspaceGroups

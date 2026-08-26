@@ -1,6 +1,14 @@
 import Foundation
 
 enum MockData {
+    static let markdownTablePreview = """
+    | 판타지 군 | 예시 관계·상황 | 수량 |
+    |---|---|---:|
+    | 가까운 사람 | best friend, neighbor, friend’s sibling | 10 |
+    | 적대적 긴장 | rival, enemy, adult bully, competing coworker | 10 |
+    | 권력·지위 | boss, billionaire, heir, royalty | 10 |
+    """
+
     static let sessions: [RemoteSession] = [
         .init(id: "mobile", name: "개발 / 모바일 세션 앱", cwd: "/Users/choijuwon/vipi-ios", phase: .working, unread: false, lastActivityAt: .now, model: "GPT-5.6", thinkingLevel: "Medium", branch: "main", contextPercent: 28, tmux: .init(session: "base", window: "3", paneID: "%101"), sessionFile: nil),
         .init(id: "ui", name: "UI / 선택 강조 개선", cwd: "/Users/choijuwon", phase: .completed, unread: true, lastActivityAt: .now.addingTimeInterval(-180), model: "GPT-5.6", thinkingLevel: "Medium", branch: nil, contextPercent: 63, tmux: .init(session: "base", window: "1", paneID: "%28"), sessionFile: nil),
