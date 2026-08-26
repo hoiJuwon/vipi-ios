@@ -28,6 +28,7 @@ final class VipiUITests: XCTestCase {
     }
 
     func testOpenSessionAndSendPrompt() {
+        XCTAssertFalse(app.tabBars.buttons["Activity"].exists)
         let session = app.buttons["session.mobile"]
         XCTAssertTrue(session.waitForExistence(timeout: 5))
         XCTAssertEqual(session.label, "개발 / 모바일 세션 앱")

@@ -80,9 +80,6 @@ struct RootView: View {
             }
             .tabItem { Label("Sessions", systemImage: "bubble.left.and.bubble.right.fill") }
 
-            NavigationStack { ActivityView() }
-                .tabItem { Label("Activity", systemImage: "waveform.path.ecg") }
-
             NavigationStack { SettingsView() }
                 .tabItem { Label("Settings", systemImage: "slider.horizontal.3") }
         }
