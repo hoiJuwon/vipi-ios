@@ -5,7 +5,10 @@ struct ComposerView: View {
     let phase: SessionPhase
     let queuedPrompts: [QueuedPrompt]
     let annotations: [ChatAnnotation]
+    let interaction: RemoteInteraction?
+    let interactionSessionName: String?
     let onRemoveAnnotation: (String) -> Void
+    let onRespondToInteraction: (RemoteInteraction, JSONValue) -> Void
     let onSend: (PromptDelivery) -> Void
     let onStop: () -> Void
 
@@ -13,11 +16,23 @@ struct ComposerView: View {
         draft.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private var isWorking: Bool { phase == .working }
+    private var isWorking: Bool { phase == .working || phase == .waitingForInput }
     private var showsStop: Bool { isWorking && trimmedDraft.isEmpty }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
+            if let interaction {
+                RemoteInteractionCard(
+                    interaction: interaction,
+                    sessionName: interactionSessionName
+                ) { response in
+                    onRespondToInteraction(interaction, response)
+                }
+                .id(interaction.requestID)
+                .padding(.horizontal, 2)
+                .padding(.bottom, 2)
+            }
+
             if let first = queuedPrompts.first {
                 HStack(spacing: 6) {
                     Text("Queued")
@@ -108,9 +123,120 @@ struct ComposerView: View {
             }
         }
         .padding(.horizontal, 12)
-        .padding(.top, queuedPrompts.isEmpty && annotations.isEmpty ? 9 : 7)
+        .padding(.top, queuedPrompts.isEmpty && annotations.isEmpty && interaction == nil ? 9 : 7)
         .padding(.bottom, 7)
         .background(.ultraThinMaterial)
         .overlay(alignment: .top) { Divider().overlay(VipiTheme.stroke) }
+    }
+}
+
+struct RemoteInteractionCard: View {
+    let interaction: RemoteInteraction
+    let sessionName: String?
+    let respond: (JSONValue) -> Void
+    @State private var input = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 11) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Circle()
+                    .fill(VipiTheme.accent)
+                    .frame(width: 7, height: 7)
+                Text(interaction.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(VipiTheme.primary)
+                    .lineLimit(2)
+                Spacer(minLength: 8)
+                if let sessionName {
+                    Text(sessionName.components(separatedBy: " / ").last ?? sessionName)
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(VipiTheme.secondary)
+                        .lineLimit(1)
+                }
+            }
+
+            if let message = interaction.message, !message.isEmpty {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(VipiTheme.secondary)
+                    .lineLimit(4)
+                    .textSelection(.enabled)
+            }
+
+            controls
+        }
+        .padding(13)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(VipiTheme.stroke, lineWidth: 0.75)
+        }
+        .shadow(color: .black.opacity(0.12), radius: 14, y: 5)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("interaction.card")
+    }
+
+    @ViewBuilder
+    private var controls: some View {
+        switch interaction.kind {
+        case .confirm:
+            HStack(spacing: 8) {
+                Spacer(minLength: 0)
+                Button("Deny", role: .destructive) { respond(.bool(false)) }
+                    .buttonStyle(.bordered)
+                Button("Allow") { respond(.bool(true)) }
+                    .buttonStyle(.borderedProminent)
+                    .tint(VipiTheme.accent)
+            }
+            .controlSize(.small)
+        case .select:
+            VStack(alignment: .leading, spacing: 7) {
+                ScrollView {
+                    VStack(spacing: 6) {
+                        ForEach(interaction.options ?? [], id: \.self) { option in
+                            Button(option) { respond(.string(option)) }
+                                .buttonStyle(.plain)
+                                .font(.subheadline)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 8)
+                                .background(VipiTheme.surface, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                        }
+                    }
+                }
+                .frame(maxHeight: 150)
+                Button("Cancel", role: .cancel) { respond(.null) }
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(VipiTheme.secondary)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+        case .input:
+            HStack(alignment: .bottom, spacing: 8) {
+                TextField(interaction.placeholder ?? "Response", text: $input, axis: .vertical)
+                    .lineLimit(1...3)
+                    .font(.subheadline)
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 8)
+                    .background(VipiTheme.surface, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 11, style: .continuous)
+                            .stroke(VipiTheme.stroke, lineWidth: 0.75)
+                    }
+                    .accessibilityIdentifier("interaction.input")
+                Button {
+                    respond(.string(input))
+                } label: {
+                    Image(systemName: "arrow.up")
+                        .font(.caption.bold())
+                        .foregroundStyle(VipiTheme.accentForeground)
+                        .frame(width: 34, height: 34)
+                        .background(VipiTheme.accent, in: Circle())
+                }
+                .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .accessibilityLabel("Submit")
+                Button("Cancel", role: .cancel) { respond(.null) }
+                    .font(.caption)
+            }
+        }
     }
 }

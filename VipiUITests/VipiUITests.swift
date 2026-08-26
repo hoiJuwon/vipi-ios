@@ -9,7 +9,7 @@ final class VipiUITests: XCTestCase {
         app = XCUIApplication()
         app.launchArguments = ["--uitesting"]
         if name.contains("PermissionInteraction") {
-            app.launchArguments.append("--interaction-preview")
+            app.launchArguments += ["--interaction-preview", "--chat-preview"]
         }
         if name.contains("LiveHost") {
             app.launchEnvironment["VIPI_E2E_PAIRING"] = #"{"host":"http://127.0.0.1:9876","token":"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ"}"#
@@ -160,13 +160,14 @@ final class VipiUITests: XCTestCase {
     }
 
     func testPermissionInteractionAppearsAndCanBeAllowed() {
-        let sheet = app.descendants(matching: .any)["interaction.sheet"]
-        XCTAssertTrue(sheet.waitForExistence(timeout: 5))
+        let card = app.descendants(matching: .any)["interaction.card"]
+        XCTAssertTrue(card.waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Permission required"].exists)
+        XCTAssertLessThan(card.frame.maxY, app.textFields["chat.composer"].frame.minY)
         let allow = app.buttons["Allow"]
         XCTAssertTrue(allow.isHittable)
         allow.tap()
-        XCTAssertFalse(sheet.waitForExistence(timeout: 1))
+        XCTAssertFalse(card.waitForExistence(timeout: 1))
     }
 
     func testManualScrollResynchronizesAssistantNavigation() {

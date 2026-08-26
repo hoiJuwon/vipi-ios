@@ -31,6 +31,6 @@ Official references:
 - **Working state:** progress reads like the next assistant message, never a button or card. Italic activity copy, compact English duration (`42s`, `2m 13s`), and the animated Ice Blue luminous core form one leading-aligned vertical stack; the orb shell, material background, and border stay hidden.
 - **Submitted turn:** after a prompt is accepted, its user bubble scrolls to the top of the response viewport with progress directly beneath it, reserving the remaining viewport for the incoming answer.
 - **Quoted context:** selecting assistant prose offers `Add to Chat`; the chosen excerpt appears as a compact removable quote annotation above the composer and stays scoped to that session's next prompt.
-- **Blocking requests:** permission confirmations, choices, and required text input appear in a non-dismissible system sheet with the session name, explicit deny/cancel behavior, and one primary response action.
+- **Blocking requests:** permission confirmations, choices, and required text input appear as a compact inline card immediately above the chat composer, with the session name, explicit deny/cancel behavior, and one primary response action. Requests from another session use the same compact card above the tab bar rather than interrupting with a modal sheet.
 - **Status color:** color communicates state but never serves as the only indicator.
 - **Motion:** freeze the Liquid Orb to a representative frame when Reduce Motion is enabled.

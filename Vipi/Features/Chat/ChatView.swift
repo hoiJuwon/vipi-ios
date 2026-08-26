@@ -34,7 +34,12 @@ struct ChatView: View {
                 phase: session?.phase ?? .offline,
                 queuedPrompts: store.queuedPrompts(for: sessionID),
                 annotations: store.annotations(for: sessionID),
-                onRemoveAnnotation: { store.removeAnnotation($0, from: sessionID) }
+                interaction: store.pendingInteractions.first(where: { $0.sessionID == sessionID }),
+                interactionSessionName: session?.name,
+                onRemoveAnnotation: { store.removeAnnotation($0, from: sessionID) },
+                onRespondToInteraction: { interaction, response in
+                    Task { await store.respond(to: interaction, with: response) }
+                }
             ) { mode in
                 let text = store.draft(for: sessionID).trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !text.isEmpty else { return }
