@@ -11,10 +11,20 @@ final class VipiUITests: XCTestCase {
         if name.contains("PermissionInteraction") {
             app.launchArguments += ["--interaction-preview", "--chat-preview"]
         }
+        if name.contains("SplashPreview") {
+            app.launchArguments += ["--splash-preview"]
+        }
         if name.contains("LiveHost") {
             app.launchEnvironment["VIPI_E2E_PAIRING"] = #"{"host":"http://127.0.0.1:9876","token":"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ"}"#
         }
         app.launch()
+    }
+
+    func testSplashPreviewShowsCodeWordmark() {
+        let splash = app.otherElements["splash.view"]
+        XCTAssertTrue(splash.waitForExistence(timeout: 5))
+        XCTAssertEqual(splash.label, "vipi")
+        XCTAssertFalse(app.navigationBars.firstMatch.isHittable)
     }
 
     func testOpenSessionAndSendPrompt() {
