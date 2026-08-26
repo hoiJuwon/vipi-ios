@@ -80,8 +80,6 @@ struct ChatView: View {
                     .accessibilityIdentifier("chat.abort")
                 } label: {
                     Image(systemName: "ellipsis")
-                        .frame(width: 34, height: 34)
-                        .vipiGlass(interactive: true, in: Circle())
                 }
                 .accessibilityIdentifier("chat.menu")
             }
@@ -330,26 +328,67 @@ private struct MessageNavigationControls: View {
     let goUp: () -> Void
     let goDown: () -> Void
 
+    @ViewBuilder
     var body: some View {
-        VStack(spacing: 0) {
-            Button(action: goUp) {
-                Image(systemName: "chevron.up")
-                    .frame(width: 38, height: 34)
+        if #available(iOS 26.0, *) {
+            GlassEffectContainer(spacing: 8) {
+                VStack(spacing: 8) {
+                    navigationButton(
+                        systemName: "chevron.up",
+                        identifier: "chat.previousAssistantMessage",
+                        label: "이전 어시스턴트 메시지",
+                        action: goUp
+                    )
+                    .buttonStyle(.glass)
+                    .buttonBorderShape(.circle)
+                    .controlSize(.large)
+                    navigationButton(
+                        systemName: "chevron.down",
+                        identifier: "chat.nextAssistantMessage",
+                        label: "다음 어시스턴트 메시지",
+                        action: goDown
+                    )
+                    .buttonStyle(.glass)
+                    .buttonBorderShape(.circle)
+                    .controlSize(.large)
+                }
             }
-            .accessibilityIdentifier("chat.previousAssistantMessage")
-            .accessibilityLabel("이전 어시스턴트 메시지")
-            Divider().overlay(VipiTheme.stroke).padding(.horizontal, 8)
-            Button(action: goDown) {
-                Image(systemName: "chevron.down")
-                    .frame(width: 38, height: 34)
+        } else {
+            VStack(spacing: 0) {
+                navigationButton(
+                    systemName: "chevron.up",
+                    identifier: "chat.previousAssistantMessage",
+                    label: "이전 어시스턴트 메시지",
+                    action: goUp
+                )
+                .frame(minWidth: 44, minHeight: 44)
+                Divider().overlay(VipiTheme.stroke).padding(.horizontal, 8)
+                navigationButton(
+                    systemName: "chevron.down",
+                    identifier: "chat.nextAssistantMessage",
+                    label: "다음 어시스턴트 메시지",
+                    action: goDown
+                )
+                .frame(minWidth: 44, minHeight: 44)
             }
-            .accessibilityIdentifier("chat.nextAssistantMessage")
-            .accessibilityLabel("다음 어시스턴트 메시지")
+            .vipiGlass(in: Capsule())
         }
-        .font(.subheadline.bold())
-        .foregroundStyle(VipiTheme.primary)
-        .frame(width: 42)
-        .vipiGlass(interactive: true, in: Capsule())
+    }
+
+    private func navigationButton(
+        systemName: String,
+        identifier: String,
+        label: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.subheadline.bold())
+                .foregroundStyle(VipiTheme.primary)
+                .frame(width: 20, height: 20)
+        }
+        .accessibilityIdentifier(identifier)
+        .accessibilityLabel(label)
     }
 }
 
@@ -394,10 +433,10 @@ private struct ChatMessageRow: View {
                 Spacer(minLength: 44)
                 Text(message.text)
                     .font(.body)
-                    .foregroundStyle(VipiTheme.accentForeground)
+                    .foregroundStyle(.white)
                     .padding(.horizontal, 15)
                     .padding(.vertical, 11)
-                    .vipiGlass(tint: VipiTheme.accent, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .background(VipiTheme.userBubble, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
         } else {
             MarkdownMessageView(source: message.text, messageID: message.id, onAddToChat: onAddToChat)

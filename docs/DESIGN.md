@@ -25,12 +25,13 @@ Official references:
 ## Visual hierarchy
 
 - **Content:** transcript and session data remain visually dominant.
-- **Functional glass:** composer, compact context/status layer, and toolbar actions float above content.
-- **Atmosphere:** restrained Ice Blue and blue gradients provide color for the glass to sample without competing with text.
-- **Identity:** Ice Blue is the primary accent across bubbles, controls, selection, and ambient gradients; use a dark foreground on bright Ice Blue surfaces in dark appearance.
+- **Functional glass:** one floating composer surface and system-provided toolbar, menu, tab, and transient navigation controls form the functional layer above content. Avoid nested custom Glass surfaces.
+- **Atmosphere:** the canvas stays nearly neutral. Ambient gradients are faint, and the transcript remains visually dominant.
+- **Identity:** Ice Blue is reserved for the animated progress core and limited state emphasis. User bubbles use a neutral solid surface with white text instead of Liquid Glass or a saturated brand fill.
 - **Working state:** progress reads like the next assistant message, never a button or card. Italic activity copy and duration, compact English timing (`42s`, `2m 13s`), and the animated Ice Blue luminous core form one leading-aligned vertical stack; extra breathing room separates the duration from the core while the orb shell, material background, and border stay hidden.
 - **Submitted turn:** after a prompt is accepted, its user bubble scrolls to the top of the response viewport with progress directly beneath it, reserving the remaining viewport for the incoming answer.
 - **Quoted context:** selecting assistant prose offers `Add to Chat`; the chosen excerpt appears as a compact removable quote annotation above the composer and stays scoped to that session's next prompt.
-- **Blocking requests:** permission confirmations, choices, and required text input appear as a compact Liquid Glass inline card immediately above the chat composer, with the session name, explicit deny/cancel behavior, and one primary response action. Requests from another session use the same compact card above the tab bar rather than interrupting with a modal sheet.
-- **Status color:** color communicates state but never serves as the only indicator.
+- **Blocking requests:** permission confirmations, choices, and required text input expand inside the single composer Glass surface instead of creating another card. Only the affirmative action is prominent; denial or cancellation remains monochrome, and prompt entry pauses until the request is resolved. Requests from another session use one standalone Glass surface above the tab bar rather than interrupting with a modal sheet.
+- **Controls:** use standard toolbar and button appearances so iOS supplies Liquid Glass, interaction states, and adaptation. Icon controls maintain at least a 44×44 pt hit region.
+- **Status color:** color communicates state but never serves as the only indicator. System red is reserved for destructive or stopping actions.
 - **Motion:** freeze the Liquid Orb to a representative frame when Reduce Motion is enabled.

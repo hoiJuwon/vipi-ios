@@ -17,6 +17,7 @@ enum VipiTheme {
     })
     static let primary = Color.primary
     static let secondary = Color.secondary
+    static let userBubble = adaptive(light: 0x26313D, dark: 0x20262F)
     static let accent = adaptive(light: 0x1677C8, dark: 0x8EEBFF)
     static let accentForeground = adaptive(light: 0xFFFFFF, dark: 0x06131F)
     static let cyan = Color(hex: 0x4F9DFF)
@@ -61,13 +62,13 @@ struct VipiBackdrop: View {
         ZStack {
             VipiTheme.canvas
             RadialGradient(
-                colors: [VipiTheme.accent.opacity(0.22), .clear],
+                colors: [VipiTheme.accent.opacity(0.07), .clear],
                 center: UnitPoint(x: 0.82, y: 0.08),
                 startRadius: 8,
                 endRadius: 330
             )
             RadialGradient(
-                colors: [VipiTheme.cyan.opacity(0.12), .clear],
+                colors: [VipiTheme.cyan.opacity(0.025), .clear],
                 center: UnitPoint(x: 0.05, y: 0.7),
                 startRadius: 10,
                 endRadius: 300

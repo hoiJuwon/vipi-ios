@@ -137,10 +137,17 @@ final class VipiUITests: XCTestCase {
         let stop = app.buttons["chat.stop"]
         XCTAssertEqual(stop.label, "Stop current run")
         XCTAssertTrue(stop.isEnabled)
+        XCTAssertEqual(composer.frame.midY, stop.frame.midY, accuracy: 1)
+        XCTAssertGreaterThanOrEqual(stop.frame.width, 44)
+        XCTAssertGreaterThanOrEqual(stop.frame.height, 44)
         XCTAssertFalse(app.buttons["chat.send"].exists)
 
         let previousMessage = app.buttons["chat.previousAssistantMessage"]
         let nextMessage = app.buttons["chat.nextAssistantMessage"]
+        XCTAssertGreaterThanOrEqual(previousMessage.frame.width, 44)
+        XCTAssertGreaterThanOrEqual(previousMessage.frame.height, 44)
+        XCTAssertGreaterThanOrEqual(nextMessage.frame.width, 44)
+        XCTAssertGreaterThanOrEqual(nextMessage.frame.height, 44)
         previousMessage.tap()
         Thread.sleep(forTimeInterval: 0.8)
         let previousText = app.descendants(matching: .any)["assistant.message.m0a"]

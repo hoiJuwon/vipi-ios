@@ -12,41 +12,35 @@ struct ComposerView: View {
     let onSend: (PromptDelivery) -> Void
     let onStop: () -> Void
 
-    private var trimmedDraft: String {
-        draft.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
+    private var trimmedDraft: String { draft.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var isWorking: Bool { phase == .working || phase == .waitingForInput }
-    private var showsStop: Bool { isWorking && trimmedDraft.isEmpty }
+    private var showsStop: Bool { isWorking && trimmedDraft.isEmpty && interaction == nil }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: 8) {
             if let interaction {
                 RemoteInteractionCard(
                     interaction: interaction,
-                    sessionName: interactionSessionName
+                    sessionName: interactionSessionName,
+                    usesGlass: false
                 ) { response in
                     onRespondToInteraction(interaction, response)
                 }
                 .id(interaction.requestID)
-                .padding(.horizontal, 2)
-                .padding(.bottom, 2)
+
+                Divider().overlay(VipiTheme.stroke)
             }
 
             if let first = queuedPrompts.first {
                 HStack(spacing: 6) {
-                    Text("Queued")
-                        .foregroundStyle(VipiTheme.accent)
-                    Text(first.text)
-                        .foregroundStyle(VipiTheme.secondary)
-                        .lineLimit(1)
+                    Text("Queued").foregroundStyle(VipiTheme.primary)
+                    Text(first.text).foregroundStyle(VipiTheme.secondary).lineLimit(1)
                     if queuedPrompts.count > 1 {
-                        Text("+\(queuedPrompts.count - 1)")
-                            .foregroundStyle(VipiTheme.secondary)
+                        Text("+\(queuedPrompts.count - 1)").foregroundStyle(VipiTheme.secondary)
                     }
                 }
                 .font(.caption)
-                .padding(.horizontal, 14)
+                .padding(.horizontal, 6)
                 .accessibilityElement(children: .combine)
                 .accessibilityIdentifier("chat.queue")
                 .accessibilityLabel("Queued messages")
@@ -57,91 +51,89 @@ struct ComposerView: View {
                 HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "quote.opening")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(VipiTheme.accent)
+                        .foregroundStyle(VipiTheme.secondary)
                         .padding(.top, 2)
                     Text(annotation.text.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression))
                         .font(.caption)
                         .foregroundStyle(VipiTheme.secondary)
                         .lineLimit(2)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                    Button {
-                        onRemoveAnnotation(annotation.id)
-                    } label: {
+                    Button { onRemoveAnnotation(annotation.id) } label: {
                         Image(systemName: "xmark")
                             .font(.caption2.weight(.bold))
-                            .frame(width: 22, height: 22)
+                            .frame(width: 28, height: 28)
                     }
                     .foregroundStyle(VipiTheme.secondary)
                     .accessibilityLabel("Remove annotation")
                 }
-                .padding(.leading, 12)
-                .padding(.trailing, 8)
-                .padding(.vertical, 8)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
                 .background(VipiTheme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(VipiTheme.accent.opacity(0.24), lineWidth: 0.75)
-                }
-                .padding(.horizontal, 2)
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("chat.annotation")
             }
 
-            HStack(alignment: .bottom, spacing: 9) {
+            HStack(alignment: .center, spacing: 8) {
                 TextField(phase == .offline ? "Reconnecting session…" : "Message Pi…", text: $draft, axis: .vertical)
                     .accessibilityIdentifier("chat.composer")
                     .accessibilityLabel("Message Pi")
                     .lineLimit(1...6)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 11)
-                    .vipiGlass(interactive: phase != .offline, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                    .disabled(phase == .offline)
+                    .padding(.leading, 6)
+                    .padding(.vertical, 10)
+                    .disabled(phase == .offline || interaction != nil)
 
-                Button {
-                    if showsStop {
-                        onStop()
-                    } else {
-                        onSend(isWorking ? .followUp : .prompt)
+                if interaction == nil {
+                    Button {
+                        if showsStop { onStop() } else { onSend(isWorking ? .followUp : .prompt) }
+                    } label: {
+                        Image(systemName: showsStop ? "stop.fill" : "arrow.up")
+                            .font(.body.bold())
+                            .frame(width: 20, height: 20)
                     }
-                } label: {
-                    Image(systemName: showsStop ? "stop.fill" : "arrow.up")
-                        .font(.body.bold())
-                        .foregroundStyle(
-                            showsStop ? Color.white : trimmedDraft.isEmpty ? VipiTheme.secondary : VipiTheme.accentForeground
-                        )
-                        .frame(width: 40, height: 40)
-                        .vipiGlass(
-                            tint: showsStop ? VipiTheme.danger : trimmedDraft.isEmpty ? VipiTheme.secondary.opacity(0.2) : VipiTheme.accent,
-                            interactive: true,
-                            in: Circle()
-                        )
+                    .buttonStyle(.borderedProminent)
+                    .buttonBorderShape(.circle)
+                    .controlSize(.large)
+                    .tint(showsStop ? VipiTheme.danger : VipiTheme.primary)
+                    .foregroundStyle(showsStop ? Color.white : VipiTheme.canvas)
+                    .disabled(phase == .offline || (!isWorking && trimmedDraft.isEmpty))
+                    .accessibilityIdentifier(showsStop ? "chat.stop" : "chat.send")
+                    .accessibilityLabel(showsStop ? "Stop current run" : "Send message")
+                    .accessibilityHint(showsStop ? "Stops the active Pi response" : isWorking ? "Queues this message after the active response" : "Sends a prompt to Pi")
                 }
-                .disabled(phase == .offline || (!isWorking && trimmedDraft.isEmpty))
-                .accessibilityIdentifier(showsStop ? "chat.stop" : "chat.send")
-                .accessibilityLabel(showsStop ? "Stop current run" : "Send message")
-                .accessibilityHint(showsStop ? "Stops the active Pi response" : isWorking ? "Queues this message after the active response" : "Sends a prompt to Pi")
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.top, queuedPrompts.isEmpty && annotations.isEmpty && interaction == nil ? 9 : 7)
+        .padding(10)
+        .vipiGlass(in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .padding(.horizontal, 10)
+        .padding(.top, 6)
         .padding(.bottom, 7)
-        .background(.ultraThinMaterial)
-        .overlay(alignment: .top) { Divider().overlay(VipiTheme.stroke) }
     }
 }
 
 struct RemoteInteractionCard: View {
     let interaction: RemoteInteraction
     let sessionName: String?
+    var usesGlass = true
     let respond: (JSONValue) -> Void
     @State private var input = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 11) {
+        Group {
+            if usesGlass {
+                content
+                    .padding(14)
+                    .vipiGlass(in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            } else {
+                content.padding(4)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("interaction.card")
+    }
+
+    private var content: some View {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Circle()
-                    .fill(VipiTheme.danger)
-                    .frame(width: 7, height: 7)
                 Text(interaction.title)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(VipiTheme.primary)
@@ -165,11 +157,6 @@ struct RemoteInteractionCard: View {
 
             controls
         }
-        .padding(13)
-        .vipiGlass(in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: .black.opacity(0.12), radius: 14, y: 5)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("interaction.card")
     }
 
     @ViewBuilder
@@ -178,14 +165,16 @@ struct RemoteInteractionCard: View {
         case .confirm:
             HStack(spacing: 8) {
                 Spacer(minLength: 0)
-                Button("Deny", role: .destructive) { respond(.bool(false)) }
+                Button("Deny") { respond(.bool(false)) }
                     .buttonStyle(.bordered)
-                    .tint(VipiTheme.danger)
+                    .tint(VipiTheme.secondary)
+                    .frame(minHeight: 44)
                 Button("Allow") { respond(.bool(true)) }
                     .buttonStyle(.borderedProminent)
-                    .tint(VipiTheme.danger)
+                    .tint(VipiTheme.primary)
+                    .foregroundStyle(VipiTheme.canvas)
+                    .frame(minHeight: 44)
             }
-            .controlSize(.small)
         case .select:
             VStack(alignment: .leading, spacing: 7) {
                 ScrollView {
@@ -195,18 +184,17 @@ struct RemoteInteractionCard: View {
                                 .buttonStyle(.plain)
                                 .font(.subheadline)
                                 .foregroundStyle(VipiTheme.primary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                                 .padding(.horizontal, 10)
-                                .padding(.vertical, 8)
-                                .background(VipiTheme.surface, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                                .background(VipiTheme.surface, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
                         }
                     }
                 }
-                .frame(maxHeight: 150)
+                .frame(maxHeight: 158)
                 Button("Cancel", role: .cancel) { respond(.null) }
-                    .font(.caption.weight(.medium))
+                    .font(.subheadline)
                     .foregroundStyle(VipiTheme.secondary)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .trailing)
             }
         case .input:
             HStack(alignment: .bottom, spacing: 8) {
@@ -214,26 +202,26 @@ struct RemoteInteractionCard: View {
                     .lineLimit(1...3)
                     .font(.subheadline)
                     .padding(.horizontal, 11)
-                    .padding(.vertical, 8)
-                    .background(VipiTheme.surface, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 11, style: .continuous)
-                            .stroke(VipiTheme.stroke, lineWidth: 0.75)
-                    }
+                    .padding(.vertical, 10)
+                    .background(VipiTheme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .accessibilityIdentifier("interaction.input")
                 Button {
                     respond(.string(input))
                 } label: {
                     Image(systemName: "arrow.up")
                         .font(.caption.bold())
-                        .foregroundStyle(.white)
-                        .frame(width: 34, height: 34)
-                        .background(VipiTheme.danger, in: Circle())
+                        .frame(width: 20, height: 20)
                 }
+                .buttonStyle(.borderedProminent)
+                .buttonBorderShape(.circle)
+                .controlSize(.large)
+                .tint(VipiTheme.primary)
+                .foregroundStyle(VipiTheme.canvas)
                 .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .accessibilityLabel("Submit")
                 Button("Cancel", role: .cancel) { respond(.null) }
-                    .font(.caption)
+                    .font(.subheadline)
+                    .frame(minHeight: 44)
             }
         }
     }
