@@ -140,7 +140,7 @@ struct RemoteInteractionCard: View {
         VStack(alignment: .leading, spacing: 11) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Circle()
-                    .fill(VipiTheme.accent)
+                    .fill(VipiTheme.danger)
                     .frame(width: 7, height: 7)
                 Text(interaction.title)
                     .font(.subheadline.weight(.semibold))
@@ -184,9 +184,10 @@ struct RemoteInteractionCard: View {
                 Spacer(minLength: 0)
                 Button("Deny", role: .destructive) { respond(.bool(false)) }
                     .buttonStyle(.bordered)
+                    .tint(VipiTheme.danger)
                 Button("Allow") { respond(.bool(true)) }
                     .buttonStyle(.borderedProminent)
-                    .tint(VipiTheme.accent)
+                    .tint(VipiTheme.danger)
             }
             .controlSize(.small)
         case .select:
@@ -197,6 +198,7 @@ struct RemoteInteractionCard: View {
                             Button(option) { respond(.string(option)) }
                                 .buttonStyle(.plain)
                                 .font(.subheadline)
+                                .foregroundStyle(VipiTheme.primary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 8)
@@ -228,9 +230,9 @@ struct RemoteInteractionCard: View {
                 } label: {
                     Image(systemName: "arrow.up")
                         .font(.caption.bold())
-                        .foregroundStyle(VipiTheme.accentForeground)
+                        .foregroundStyle(.white)
                         .frame(width: 34, height: 34)
-                        .background(VipiTheme.accent, in: Circle())
+                        .background(VipiTheme.danger, in: Circle())
                 }
                 .disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .accessibilityLabel("Submit")
