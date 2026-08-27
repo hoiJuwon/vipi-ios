@@ -1013,10 +1013,7 @@ private struct WorkingStatusView: View {
                     .font(.caption.monospacedDigit().italic())
                     .foregroundStyle(VipiTheme.secondary)
                 LiquidOrbView()
-                    .frame(width: 44, height: 44)
-                    .offset(x: -11)
-                    .frame(width: 27, height: 13, alignment: .leading)
-                    .clipped()
+                    .frame(width: 28, height: 28)
                     .shadow(color: VipiTheme.accent.opacity(0.38), radius: 6)
                     .padding(.top, 7)
             }

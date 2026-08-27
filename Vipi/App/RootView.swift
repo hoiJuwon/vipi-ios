@@ -2,6 +2,7 @@ import SwiftUI
 
 struct VipiSplashView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var typedName = ""
     @State private var cursorVisible = true
 
     var body: some View {
@@ -16,7 +17,7 @@ struct VipiSplashView: View {
                     .clipped()
 
                 HStack(alignment: .center, spacing: 4) {
-                    Text("vipi")
+                    Text(typedName)
                         .font(.system(size: 22, weight: .medium, design: .monospaced))
                         .foregroundStyle(.white.opacity(0.94))
 
@@ -25,6 +26,7 @@ struct VipiSplashView: View {
                         .frame(width: 11, height: 24)
                         .opacity(reduceMotion || cursorVisible ? 1 : 0.16)
                 }
+                .frame(width: 74, alignment: .leading)
                 .offset(y: geometry.size.height * 0.655)
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
@@ -33,9 +35,22 @@ struct VipiSplashView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityIdentifier("splash.view")
         .accessibilityLabel("vipi")
-        .onAppear {
-            guard !reduceMotion else { return }
-            withAnimation(.easeInOut(duration: 0.48).repeatForever(autoreverses: true)) {
+        .task {
+            guard !reduceMotion else {
+                typedName = "vipi"
+                return
+            }
+
+            typedName = ""
+            cursorVisible = true
+            try? await Task.sleep(for: .milliseconds(180))
+            for character in "vipi" {
+                guard !Task.isCancelled else { return }
+                typedName.append(character)
+                try? await Task.sleep(for: .milliseconds(90))
+            }
+            try? await Task.sleep(for: .milliseconds(90))
+            withAnimation(.easeInOut(duration: 0.3).repeatForever(autoreverses: true)) {
                 cursorVisible = false
             }
         }
