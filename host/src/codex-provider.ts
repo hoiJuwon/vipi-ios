@@ -207,9 +207,12 @@ export class CodexProvider {
       ? options.beforeEntryID.slice(CURSOR_PREFIX.length) : undefined;
     const result = await this.client.request<{ data?: unknown[]; nextCursor?: string | null }>("thread/turns/list", {
       threadId: threadID,
-      limit: Math.min(30, Math.max(5, Math.ceil((options.limit ?? 60) / 2))),
+      // Keep each local daemon response bounded. `summary` retains user and
+      // final assistant messages while excluding tool payloads; five turns is
+      // the newest mobile page and the returned cursor loads older pages.
+      limit: Math.min(5, Math.max(1, Math.ceil((options.limit ?? 10) / 2))),
       sortDirection: "desc",
-      itemsView: "full",
+      itemsView: "summary",
       ...(cursor ? { cursor } : {}),
     }, 20_000);
     const events = normalizeCodexTurns(result.data);

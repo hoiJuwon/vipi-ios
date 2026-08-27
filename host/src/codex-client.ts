@@ -87,7 +87,10 @@ export class CodexClient {
     if (this.stopped || this.socket?.readyState === WebSocket.OPEN || this.socket?.readyState === WebSocket.CONNECTING) return;
     this.options.onStateChange?.("connecting");
     const socketURL = `ws+unix://${this.socketPath}:/`;
-    const socket = new WebSocket(socketURL, { perMessageDeflate: false, maxPayload: 8 * 1024 * 1024 });
+    // Codex pages are bounded, but a single summarized turn can still contain
+    // local image metadata. Keep a finite per-page ceiling without accepting
+    // an unbounded legacy transcript.
+    const socket = new WebSocket(socketURL, { perMessageDeflate: false, maxPayload: 64 * 1024 * 1024 });
     this.socket = socket;
 
     socket.on("message", (raw) => this.receive(raw.toString()));
