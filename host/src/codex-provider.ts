@@ -61,12 +61,39 @@ function statusPhase(status: CodexThread["status"]): SessionPhase {
   return "idle";
 }
 
+function decodeCodexEntities(value: string): string {
+  const decodePoint = (match: string, encoded: string, radix: number): string => {
+    const point = Number.parseInt(encoded, radix);
+    return Number.isInteger(point) && point >= 0 && point <= 0x10ffff ? String.fromCodePoint(point) : match;
+  };
+  return value
+    .replace(/&#x([0-9a-f]+);/gi, (match, hex: string) => decodePoint(match, hex, 16))
+    .replace(/&#(\d+);/g, (match, decimal: string) => decodePoint(match, decimal, 10))
+    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
+}
+
+function visibleCodexUserText(value: string): string {
+  const decoded = decodeCodexEntities(value).trim();
+  if (!decoded.startsWith("# Response annotations:") || !decoded.includes("<response-annotations>")) return decoded;
+  const request = decoded.match(/(?:^|\n)## My request:\s*\n?([\s\S]*)$/);
+  if (request?.[1]?.trim()) return request[1].trim();
+  const annotations = decoded.match(/<response-annotations>\s*([\s\S]*?)\s*<\/response-annotations>/)?.[1];
+  if (!annotations) return "";
+  try {
+    const parsed = JSON.parse(annotations) as Array<{ annotation?: unknown }>;
+    return parsed.flatMap((item) => typeof item.annotation === "string" && item.annotation.trim() ? [item.annotation.trim()] : []).join("\n");
+  } catch {
+    return "";
+  }
+}
+
 function textFromUserContent(value: unknown): string {
   if (!Array.isArray(value)) return "";
-  return value.flatMap((part): string[] => {
+  const text = value.flatMap((part): string[] => {
     const item = object(part);
     return item?.type === "text" && typeof item.text === "string" ? [item.text] : [];
   }).join("\n");
+  return visibleCodexUserText(text);
 }
 
 export function normalizeCodexThread(thread: CodexThread, unread = false): SessionRecord {

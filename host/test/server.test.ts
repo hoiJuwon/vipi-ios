@@ -149,6 +149,22 @@ test("normalizes only user and final assistant content from paginated Codex turn
     ["user", "Hello"],
     ["assistant", "Final"],
   ]);
+
+  const annotated = normalizeCodexTurns([{
+    id: "turn-annotated",
+    items: [{
+      type: "userMessage",
+      content: [{ type: "text", text: `# Response annotations:
+Internal rendering instructions.
+<response-annotations>
+[{"text":"selected answer","annotation":"fix this"}]
+</response-annotations>
+
+## My request:
+Show only my request&#x20;` }],
+    }],
+  }]);
+  assert.equal(annotated[0]?.kind === "message" ? annotated[0].text : undefined, "Show only my request");
 });
 
 test("creates pairing payloads only for public HTTPS Tailscale hosts", () => {
