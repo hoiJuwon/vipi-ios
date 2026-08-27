@@ -131,6 +131,10 @@ struct VipiApp: App {
     private let holdsSplashForPreview: Bool
 
     init() {
+        UserDefaults.standard.set(
+            UIAccessibility.isReduceMotionEnabled,
+            forKey: "vipi.diagnostics.reduceMotionEnabled"
+        )
         #if DEBUG
         let allowsLocalhost = CommandLine.arguments.contains("--uitesting")
         #else

@@ -1,7 +1,6 @@
 import SwiftUI
 
 struct VipiSplashView: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var typedName = ""
     @State private var cursorVisible = true
 
@@ -24,7 +23,7 @@ struct VipiSplashView: View {
                     Rectangle()
                         .fill(Color(red: 0.55, green: 0.76, blue: 1))
                         .frame(width: 11, height: 24)
-                        .opacity(reduceMotion || cursorVisible ? 1 : 0.16)
+                        .opacity(cursorVisible ? 1 : 0.16)
                 }
                 .frame(width: 74, alignment: .leading)
                 .offset(y: geometry.size.height * 0.655)
@@ -36,11 +35,6 @@ struct VipiSplashView: View {
         .accessibilityIdentifier("splash.view")
         .accessibilityLabel("vipi")
         .task {
-            guard !reduceMotion else {
-                typedName = "vipi"
-                return
-            }
-
             typedName = ""
             cursorVisible = true
             try? await Task.sleep(for: .milliseconds(180))

@@ -10,12 +10,15 @@ struct LiquidOrbView: View {
         TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { context in
             let time = context.date.timeIntervalSinceReferenceDate
             let wave = sin(time * .pi * 2 / 1.05)
-            let displacement = reduceMotion ? 0 : wave
+            let motionScale = reduceMotion ? 0.55 : 1.0
 
-            LiquidOrbSurface(isPaused: reduceMotion)
-                .scaleEffect(x: 1 + displacement * 0.16, y: 1 - displacement * 0.08)
-                .offset(x: displacement * 4.5)
-                .opacity(reduceMotion ? 0.82 + abs(wave) * 0.16 : 0.82 + abs(wave) * 0.18)
+            LiquidOrbSurface(isPaused: false)
+                .scaleEffect(
+                    x: 1 + wave * 0.16 * motionScale,
+                    y: 1 - wave * 0.08 * motionScale
+                )
+                .offset(x: wave * 4.5 * motionScale)
+                .opacity(0.82 + abs(wave) * 0.18)
         }
         .accessibilityHidden(true)
     }
