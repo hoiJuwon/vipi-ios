@@ -424,24 +424,25 @@ private struct SessionRow: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
-            Circle()
-                .fill(session.hasUnreadResponse ? VipiTheme.primary : Color.clear)
-                .frame(width: 8, height: 8)
-                .accessibilityHidden(true)
+            Group {
+                if session.phase == .working {
+                    ProgressView()
+                        .controlSize(.mini)
+                        .tint(VipiTheme.accent)
+                } else {
+                    Circle()
+                        .fill(session.hasUnreadResponse ? VipiTheme.primary : Color.clear)
+                        .frame(width: 8, height: 8)
+                }
+            }
+            .frame(width: 12, height: 12)
+            .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 5) {
-                HStack(spacing: 7) {
-                    Text(session.name)
-                        .font(.body.weight(session.hasUnreadResponse ? .bold : .semibold))
-                        .foregroundStyle(VipiTheme.primary)
-                        .lineLimit(1)
-                    if session.phase == .working {
-                        ProgressView()
-                            .controlSize(.mini)
-                            .tint(VipiTheme.accent)
-                            .accessibilityHidden(true)
-                    }
-                }
+                Text(session.name)
+                    .font(.body.weight(session.hasUnreadResponse ? .bold : .semibold))
+                    .foregroundStyle(VipiTheme.primary)
+                    .lineLimit(1)
 
                 Text(preview)
                     .font(.subheadline)
