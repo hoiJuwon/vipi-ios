@@ -87,7 +87,7 @@ export class CodexClient {
     if (this.stopped || this.socket?.readyState === WebSocket.OPEN || this.socket?.readyState === WebSocket.CONNECTING) return;
     this.options.onStateChange?.("connecting");
     const socketURL = `ws+unix://${this.socketPath}:/`;
-    const socket = new WebSocket(socketURL, { perMessageDeflate: false, maxPayload: 256 * 1024 * 1024 });
+    const socket = new WebSocket(socketURL, { perMessageDeflate: false, maxPayload: 8 * 1024 * 1024 });
     this.socket = socket;
 
     socket.on("message", (raw) => this.receive(raw.toString()));

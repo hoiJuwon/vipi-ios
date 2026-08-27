@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { basename } from "node:path";
+import { execFile } from "node:child_process";
+import { access } from "node:fs/promises";
+import { homedir } from "node:os";
+import { basename, join } from "node:path";
+import { promisify } from "node:util";
 import { CodexClient, type CodexConnectionState } from "./codex-client.js";
 import type { SessionPhase, SessionRecord } from "./protocol.js";
 
@@ -17,6 +21,7 @@ interface CodexThread {
   updatedAt?: number | null;
   createdAt?: number | null;
   status?: { type?: string; activeFlags?: string[] } | null;
+  historyMode?: "legacy" | "paginated" | null;
 }
 
 interface CodexProviderCallbacks {
@@ -36,6 +41,7 @@ type PendingApproval = { rpcID: string | number; method: string; threadID: strin
 
 const CODEX_PREFIX = "codex:";
 const CURSOR_PREFIX = "codex-cursor:";
+const execFileAsync = promisify(execFile);
 
 function object(value: unknown): JsonObject | undefined {
   return value !== null && typeof value === "object" ? value as JsonObject : undefined;
@@ -128,6 +134,7 @@ export class CodexProvider {
   private readonly callbacks: CodexProviderCallbacks;
   private readonly sessionRecords = new Map<string, SessionRecord>();
   private readonly threadLoadState = new Map<string, string>();
+  private readonly threadHistoryMode = new Map<string, "legacy" | "paginated">();
   private readonly unread = new Set<string>();
   private readonly activeTurns = new Map<string, string>();
   private readonly pendingApprovals = new Map<string, PendingApproval>();
@@ -178,6 +185,7 @@ export class CodexProvider {
       const id = `${CODEX_PREFIX}${thread.id}`;
       next.set(id, normalizeCodexThread(thread, this.unread.has(id)));
       this.threadLoadState.set(id, thread.status?.type ?? "notLoaded");
+      this.threadHistoryMode.set(id, thread.historyMode ?? "legacy");
     }
     const fingerprint = JSON.stringify([...next.values()]);
     this.sessionRecords.clear();
@@ -220,6 +228,7 @@ export class CodexProvider {
     const session = normalizeCodexThread(result.thread);
     this.sessionRecords.set(session.id, session);
     this.threadLoadState.set(session.id, result.thread.status?.type ?? "idle");
+    this.threadHistoryMode.set(session.id, result.thread.historyMode ?? "paginated");
     this.callbacks.onSessionsChanged?.();
     return { cwd: session.cwd, paneID: session.tmux.paneID, sessionID: session.id };
   }
@@ -248,6 +257,7 @@ export class CodexProvider {
     }
     if (status === "offline") throw new Error("Codex is unavailable");
     if (this.threadLoadState.get(sessionID) === "notLoaded") {
+      await this.ensurePaginatedHistory(sessionID, threadID);
       await this.client.request("thread/resume", { threadId: threadID }, 120_000);
       this.threadLoadState.set(sessionID, "idle");
     }
@@ -406,6 +416,33 @@ export class CodexProvider {
       this.refreshQueued = false;
       void this.refreshSessions().catch(() => {});
     }, 150).unref();
+  }
+
+  private async ensurePaginatedHistory(sessionID: string, threadID: string): Promise<void> {
+    if (this.threadHistoryMode.get(sessionID) === "paginated") return;
+    const configured = process.env.VIPI_CODEX_BIN;
+    const managed = join(process.env.CODEX_HOME ?? join(homedir(), ".codex"), "packages", "standalone", "current", "codex");
+    let binary = configured ?? managed;
+    if (!configured) {
+      try { await access(managed); } catch { binary = "codex"; }
+    }
+    let stdout: string;
+    try {
+      ({ stdout } = await execFileAsync(binary, [
+        "migrate-rollouts", "--apply", "--thread", threadID,
+        "--max-mib-per-second", "64", "--json",
+      ], { timeout: 120_000, maxBuffer: 1024 * 1024 }));
+    } catch {
+      throw new Error("Codex could not prepare this older session for paginated history.");
+    }
+    try {
+      const report = JSON.parse(stdout) as { outcomes?: Array<{ status?: string }> };
+      const status = report.outcomes?.[0]?.status;
+      if (status !== "migrated" && status !== "already_paginated") throw new Error("migration skipped");
+    } catch {
+      throw new Error("Codex could not prepare this older session for paginated history.");
+    }
+    this.threadHistoryMode.set(sessionID, "paginated");
   }
 
   private threadID(sessionID: string): string {

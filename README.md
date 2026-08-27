@@ -99,7 +99,7 @@ codex remote-control start
 codex app-server daemon version
 ```
 
-The host connects only to the current user's private `~/.codex/app-server-control/app-server-control.sock`, requests state-DB-only session metadata, and pages recent turns lazily. Codex credentials and raw rollout files stay on the Mac. Set `VIPI_CODEX_ENABLED=0` to disable this provider, or `VIPI_CODEX_SOCKET=/absolute/private/socket` when using a nondefault `CODEX_HOME`.
+The host connects only to the current user's private `~/.codex/app-server-control/app-server-control.sock`, requests state-DB-only session metadata, and pages recent turns lazily. Before first send, a legacy rollout is promoted individually with Codex's official `migrate-rollouts` command so `thread/resume` cannot return an unbounded transcript. Codex credentials and raw rollout files stay on the Mac. Set `VIPI_CODEX_ENABLED=0` to disable this provider, `VIPI_CODEX_SOCKET=/absolute/private/socket` for a nondefault daemon socket, or `VIPI_CODEX_BIN=/absolute/codex` for a nondefault managed CLI.
 
 ## Tailscale
 
