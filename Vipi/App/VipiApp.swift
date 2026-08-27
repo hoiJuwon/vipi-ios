@@ -166,7 +166,11 @@ struct VipiApp: App {
             .task { await store.connectIfConfigured() }
             .task {
                 guard !CommandLine.arguments.contains("--uitesting") else { return }
-                _ = await PushNotificationCoordinator.prepare()
+                if CommandLine.arguments.contains("--request-notifications") {
+                    _ = await PushNotificationCoordinator.requestAuthorization()
+                } else {
+                    _ = await PushNotificationCoordinator.prepare()
+                }
                 await store.registerPushDeviceIfAvailable()
                 if let sessionID = PushNotificationCoordinator.consumePendingSessionID() {
                     store.requestSessionFromNotification(sessionID)
