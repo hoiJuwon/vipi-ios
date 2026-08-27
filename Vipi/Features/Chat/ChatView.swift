@@ -182,7 +182,7 @@ struct ChatView: View {
                             }
                             if isWorking || pinsSubmittedTurn {
                                 Color.clear
-                                    .containerRelativeFrame(.vertical) { length, _ in max(0, length - 72) }
+                                    .containerRelativeFrame(.vertical) { length, _ in max(0, length * 0.55) }
                                     .accessibilityHidden(true)
                             }
                         }
@@ -310,7 +310,10 @@ struct ChatView: View {
             await Task.yield()
             try? await Task.sleep(for: .milliseconds(120))
             withAnimation(.snappy) {
-                proxy.scrollTo(target, anchor: pinsCurrentTurn ? .top : .bottom)
+                proxy.scrollTo(
+                    target,
+                    anchor: pinsCurrentTurn ? UnitPoint(x: 0.5, y: 0.34) : .bottom
+                )
             }
         }
     }
