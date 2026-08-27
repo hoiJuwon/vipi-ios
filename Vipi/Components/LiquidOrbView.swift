@@ -9,7 +9,7 @@ struct LiquidOrbView: View {
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { context in
             let time = context.date.timeIntervalSinceReferenceDate
-            let wave = sin(time * .pi * 2 / 1.05)
+            let wave = sin(time * .pi * 2 / 2.4)
             let motionScale = reduceMotion ? 0.55 : 1.0
 
             LiquidOrbSurface(isPaused: false)

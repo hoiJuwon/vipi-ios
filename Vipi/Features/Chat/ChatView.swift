@@ -997,6 +997,38 @@ private extension View {
     }
 }
 
+private struct ShimmeringProgressTitle: View {
+    let text: String
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { context in
+            let time = context.date.timeIntervalSinceReferenceDate
+            let travel = (sin(time * .pi * 2 / 2.8) + 1) / 2
+
+            Text(text)
+                .font(.body.italic())
+                .foregroundStyle(VipiTheme.secondary.opacity(0.92))
+                .overlay {
+                    GeometryReader { geometry in
+                        let bandWidth = max(30, geometry.size.width * 0.46)
+                        LinearGradient(
+                            colors: [.clear, VipiTheme.primary.opacity(0.9), .clear],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                        .frame(width: bandWidth)
+                        .offset(x: travel * (geometry.size.width + bandWidth) - bandWidth)
+                    }
+                    .mask {
+                        Text(text)
+                            .font(.body.italic())
+                    }
+                    .allowsHitTesting(false)
+                }
+        }
+    }
+}
+
 private struct WorkingStatusView: View {
     let activity: ProgressActivity
     let startedAt: Date
@@ -1004,16 +1036,14 @@ private struct WorkingStatusView: View {
     var body: some View {
         TimelineView(.periodic(from: .now, by: 0.45)) { context in
             VStack(alignment: .leading, spacing: 3) {
-                Text(activity.title + animatedDots(at: context.date))
-                    .font(.body.italic())
-                    .foregroundStyle(VipiTheme.primary)
+                ShimmeringProgressTitle(text: activity.title + animatedDots(at: context.date))
                     .contentTransition(.interpolate)
                     .animation(.easeInOut(duration: 0.2), value: activity)
                 Text(elapsedText(at: context.date))
                     .font(.caption.monospacedDigit().italic())
                     .foregroundStyle(VipiTheme.secondary)
                 LiquidOrbView()
-                    .frame(width: 28, height: 28)
+                    .frame(width: 36, height: 36)
                     .shadow(color: VipiTheme.accent.opacity(0.38), radius: 6)
                     .padding(.top, 7)
             }
