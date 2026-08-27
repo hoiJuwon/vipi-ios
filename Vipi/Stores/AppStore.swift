@@ -411,11 +411,13 @@ final class AppStore {
             sessionCreationError = "Connect to the Vipi host before starting a session."
             return
         }
+        let requestID = UUID().uuidString
+        pendingSessionCreationRequests[requestID] = .workspaces
         do {
-            let requestID = try await broker.send(type: "workspaces.list", payload: EmptyPayload())
-            pendingSessionCreationRequests[requestID] = .workspaces
+            _ = try await broker.send(type: "workspaces.list", payload: EmptyPayload(), id: requestID)
             scheduleSessionCreationTimeout(requestID)
         } catch {
+            pendingSessionCreationRequests.removeValue(forKey: requestID)
             isLoadingWorkspaces = false
             sessionCreationError = error.localizedDescription
         }
@@ -433,15 +435,18 @@ final class AppStore {
             return
         }
         isBrowsingWorkspace = true
+        let requestID = UUID().uuidString
+        latestWorkspaceBrowseRequestID = requestID
+        pendingSessionCreationRequests[requestID] = .browse
         do {
-            let requestID = try await broker.send(
+            _ = try await broker.send(
                 type: "workspaces.browse",
-                payload: WorkspaceBrowsePayload(path: path)
+                payload: WorkspaceBrowsePayload(path: path),
+                id: requestID
             )
-            latestWorkspaceBrowseRequestID = requestID
-            pendingSessionCreationRequests[requestID] = .browse
             scheduleSessionCreationTimeout(requestID)
         } catch {
+            pendingSessionCreationRequests.removeValue(forKey: requestID)
             isBrowsingWorkspace = false
             sessionCreationError = error.localizedDescription
         }
@@ -483,14 +488,18 @@ final class AppStore {
             sessionCreationError = "The Vipi host is disconnected."
             return
         }
+        let requestID = UUID().uuidString
+        let provider = selectedProvider
+        pendingSessionCreationRequests[requestID] = .create(path: path, provider: provider)
         do {
-            let requestID = try await broker.send(
+            _ = try await broker.send(
                 type: "session.create",
-                payload: SessionCreatePayload(cwd: path, provider: selectedProvider)
+                payload: SessionCreatePayload(cwd: path, provider: provider),
+                id: requestID
             )
-            pendingSessionCreationRequests[requestID] = .create(path: path, provider: selectedProvider)
             scheduleSessionCreationTimeout(requestID, seconds: 15)
         } catch {
+            pendingSessionCreationRequests.removeValue(forKey: requestID)
             isCreatingSession = false
             startingSessionPath = nil
             sessionCreationError = error.localizedDescription
@@ -500,26 +509,31 @@ final class AppStore {
     func registerPushDeviceIfAvailable() async {
         guard connectionState == .connected,
               let registration = PushNotificationCoordinator.registration else { return }
+        let requestID = UUID().uuidString
+        pendingPushRequests.insert(requestID)
         do {
-            let requestID = try await broker.send(
+            _ = try await broker.send(
                 type: "push.register",
                 payload: PushRegistrationPayload(
                     deviceToken: registration.deviceToken,
                     environment: registration.environment
-                )
+                ),
+                id: requestID
             )
-            pendingPushRequests.insert(requestID)
         } catch {
+            pendingPushRequests.remove(requestID)
             pushRegistrationError = error.localizedDescription
         }
     }
 
     func refreshPushStatus() async {
         guard connectionState == .connected else { return }
+        let requestID = UUID().uuidString
+        pendingPushRequests.insert(requestID)
         do {
-            let requestID = try await broker.send(type: "push.status", payload: EmptyPayload())
-            pendingPushRequests.insert(requestID)
+            _ = try await broker.send(type: "push.status", payload: EmptyPayload(), id: requestID)
         } catch {
+            pendingPushRequests.remove(requestID)
             pushRegistrationError = error.localizedDescription
         }
     }
@@ -569,9 +583,10 @@ final class AppStore {
             beforeEntryID: direction == .older ? oldestEntryBySession[sessionID] : nil,
             limit: 60
         )
+        let requestID = UUID().uuidString
+        pendingHistoryRequests[requestID] = PendingHistoryRequest(sessionID: sessionID, direction: direction)
         do {
-            let requestID = try await broker.send(type: "session.history", payload: payload)
-            pendingHistoryRequests[requestID] = PendingHistoryRequest(sessionID: sessionID, direction: direction)
+            _ = try await broker.send(type: "session.history", payload: payload, id: requestID)
             Task { [weak self] in
                 try? await Task.sleep(for: .seconds(12))
                 guard let self, self.pendingHistoryRequests[requestID]?.sessionID == sessionID else { return }
@@ -579,6 +594,7 @@ final class AppStore {
                 self.historyRequestsInFlight.remove(sessionID)
             }
         } catch {
+            pendingHistoryRequests.removeValue(forKey: requestID)
             historyRequestsInFlight.remove(sessionID)
             connectionState = .disconnected(error.localizedDescription)
         }

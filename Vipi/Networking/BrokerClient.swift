@@ -86,9 +86,8 @@ actor BrokerClient {
     }
 
     @discardableResult
-    func send<Payload: Encodable>(type: String, payload: Payload) async throws -> String {
+    func send<Payload: Encodable>(type: String, payload: Payload, id: String = UUID().uuidString) async throws -> String {
         guard let socket else { throw ClientError.notConnected }
-        let id = UUID().uuidString
         let envelope = ClientEnvelope(id: id, type: type, payload: payload)
         let data = try JSONEncoder().encode(envelope)
         try await socket.send(.data(data))
