@@ -433,7 +433,7 @@ private struct SessionRow: View {
                                 .tint(VipiTheme.accent)
                         } else {
                             Circle()
-                                .fill(session.hasUnreadResponse ? VipiTheme.primary : Color.clear)
+                                .fill(session.hasUnreadResponse ? Color.green : Color.clear)
                                 .frame(width: 8, height: 8)
                         }
                     }
