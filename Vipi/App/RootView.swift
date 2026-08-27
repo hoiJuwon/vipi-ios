@@ -43,18 +43,20 @@ struct VipiSplashView: View {
 }
 
 struct RootView: View {
-    private enum Tab: Hashable { case sessions, settings }
+    private enum Route: Hashable {
+        case session(String)
+        case settings
+    }
 
     @Environment(AppStore.self) private var store
-    @State private var selectedTab: Tab = .sessions
-    @State private var sessionPath: [RemoteSession] = []
+    @State private var path: [Route] = []
 
     var body: some View {
         Group {
             if CommandLine.arguments.contains("--chat-preview") {
                 NavigationStack { ChatView(sessionID: "mobile") }
             } else {
-                tabs
+                navigation
             }
         }
         .overlay(alignment: .bottom) {
@@ -76,29 +78,26 @@ struct RootView: View {
         .onChange(of: store.sessions.map(\.id)) { _, _ in openNotificationSessionIfAvailable() }
     }
 
-    private var tabs: some View {
-        TabView(selection: $selectedTab) {
-            NavigationStack(path: $sessionPath) {
-                SessionListView()
-                    .navigationDestination(for: RemoteSession.self) { session in
-                        ChatView(sessionID: session.id)
-                    }
+    private var navigation: some View {
+        NavigationStack(path: $path) {
+            SessionListView(
+                openSettings: { path.append(.settings) },
+                openSession: { path.append(.session($0.id)) }
+            )
+            .navigationDestination(for: Route.self) { route in
+                switch route {
+                case let .session(sessionID): ChatView(sessionID: sessionID)
+                case .settings: SettingsView()
+                }
             }
-            .tabItem { Label("Sessions", systemImage: "bubble.left.and.bubble.right.fill") }
-            .tag(Tab.sessions)
-
-            NavigationStack { SettingsView() }
-                .tabItem { Label("Settings", systemImage: "slider.horizontal.3") }
-                .tag(Tab.settings)
         }
         .tint(VipiTheme.accent)
     }
 
     private func openNotificationSessionIfAvailable() {
         guard let sessionID = store.requestedNotificationSessionID,
-              let session = store.session(id: sessionID) else { return }
-        selectedTab = .sessions
-        sessionPath = [session]
+              store.session(id: sessionID) != nil else { return }
+        path = [.session(sessionID)]
         store.consumeNotificationSessionRequest()
     }
 }

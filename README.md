@@ -65,7 +65,7 @@ xcodebuild -project Vipi.xcodeproj \
   CODE_SIGNING_ALLOWED=NO build
 ```
 
-Production launches with no fabricated sessions. Open Settings to pair a host. Demo data is available only through the explicit **Use demo data** action (and the isolated UI-test launch seam).
+Production launches with no fabricated sessions. Open Settings from the session-list toolbar to pair a host. Demo data is available only through the explicit **Use demo data** action (and the isolated UI-test launch seam).
 
 The owner's existing physical-device installation uses the canonical bundle ID `com.abovetech.vipi.choijuwon`. Keep this identifier unchanged so deployment upgrades the existing app and preserves its pairing data. Use the repository's `vipi-iphone-deploy` skill/script for installation; App Store Connect, archive upload, and TestFlight are not required.
 
@@ -181,7 +181,7 @@ Vipi can alert registered iPhones when a Pi runtime moves from `working` to `com
 1. Enable Push Notifications for that explicit App ID and install an updated iOS development provisioning profile.
 2. Create an APNs signing key in the Apple Developer portal and download its `.p8` file once.
 3. Run `./scripts/configure-apns.sh /path/to/AuthKey_KEYID.p8 KEYID12345`. It copies the key privately, writes `~/.pi/agent/vipi/apns.json` with mode `0600`, and restarts the host. [`host/apns.example.json`](host/apns.example.json) documents the same fields for manual setup.
-4. Enable **Answer alerts** in the app's Settings tab.
+4. Enable **Answer alerts** from Settings in the session-list toolbar.
 
 The host stores APNs device tokens in a private `0600` registry. Notifications include only the session name and a generic completion message; assistant answer text is never sent to APNs.
 

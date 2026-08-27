@@ -39,9 +39,14 @@ final class VipiUITests: XCTestCase {
     }
 
     func testNewSessionPickerShowsRegisteredWorkspacesAndCreatesSession() {
+        let search = app.textFields["sessions.search"]
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
         let add = app.buttons["sessions.add"]
         XCTAssertTrue(add.waitForExistence(timeout: 5))
         XCTAssertTrue(add.isHittable)
+        XCTAssertGreaterThan(add.frame.minY, app.frame.midY)
+        XCTAssertTrue(app.buttons["sessions.settings"].exists)
+        XCTAssertFalse(app.tabBars.firstMatch.exists)
         add.tap()
 
         XCTAssertTrue(app.navigationBars["New Session"].waitForExistence(timeout: 5))
@@ -150,10 +155,10 @@ final class VipiUITests: XCTestCase {
             XCTFail("The canonical test runner must provision the local E2E fixture on port 9876")
             return
         }
-        app.tabBars.buttons["Settings"].tap()
+        app.buttons["sessions.settings"].tap()
         app.buttons["settings.connect"].tap()
 
-        app.tabBars.buttons["Sessions"].tap()
+        app.navigationBars.buttons["Sessions"].tap()
         let session = app.buttons["session.e2e"]
         XCTAssertTrue(session.waitForExistence(timeout: 10))
         session.tap()
@@ -271,7 +276,7 @@ final class VipiUITests: XCTestCase {
     }
 
     func testPairingAndConnectionControlsAreAccessible() {
-        app.tabBars.buttons["Settings"].tap()
+        app.buttons["sessions.settings"].tap()
         XCTAssertTrue(app.secureTextFields["settings.pairingPayload"].waitForExistence(timeout: 5))
         XCTAssertTrue(scrollToExistence(app.textFields["settings.host"]))
         XCTAssertTrue(scrollToExistence(app.secureTextFields["settings.token"]))

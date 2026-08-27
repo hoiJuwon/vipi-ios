@@ -25,6 +25,9 @@ struct ComposerView: View {
     private var trimmedDraft: String { draft.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var isWorking: Bool { phase == .working || phase == .waitingForInput }
     private var showsStop: Bool { isWorking && trimmedDraft.isEmpty && imageAttachments.isEmpty && interaction == nil }
+    private var actionEnabled: Bool {
+        phase != .offline && (showsStop || isWorking || !trimmedDraft.isEmpty || !imageAttachments.isEmpty)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -142,14 +145,20 @@ struct ComposerView: View {
                     } label: {
                         Image(systemName: showsStop ? "stop.fill" : "arrow.up")
                             .font(.body.bold())
-                            .frame(width: 20, height: 20)
+                            .foregroundStyle(actionEnabled ? VipiTheme.primaryActionForeground : VipiTheme.secondary)
+                            .frame(width: 44, height: 44)
+                            .background(
+                                actionEnabled ? VipiTheme.primaryAction : VipiTheme.surface,
+                                in: Circle()
+                            )
+                            .overlay {
+                                if !actionEnabled {
+                                    Circle().stroke(VipiTheme.stroke.opacity(0.7), lineWidth: 0.75)
+                                }
+                            }
                     }
-                    .buttonStyle(.borderedProminent)
-                    .buttonBorderShape(.circle)
-                    .controlSize(.large)
-                    .tint(VipiTheme.primaryAction)
-                    .foregroundStyle(VipiTheme.primaryActionForeground)
-                    .disabled(phase == .offline || (!isWorking && trimmedDraft.isEmpty && imageAttachments.isEmpty))
+                    .buttonStyle(.plain)
+                    .disabled(!actionEnabled)
                     .accessibilityIdentifier(showsStop ? "chat.stop" : "chat.send")
                     .accessibilityLabel(showsStop ? "Stop current run" : "Send message")
                         .accessibilityHint(showsStop ? "Stops the active Pi response" : isWorking ? "Queues this message after the active response" : "Sends a prompt to Pi")

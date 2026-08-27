@@ -4,6 +4,16 @@ struct SessionListView: View {
     @Environment(AppStore.self) private var store
     @State private var searchText = ""
     @State private var showsNewSession = CommandLine.arguments.contains("--session-picker-preview")
+    let openSettings: () -> Void
+    let openSession: (RemoteSession) -> Void
+
+    init(
+        openSettings: @escaping () -> Void = {},
+        openSession: @escaping (RemoteSession) -> Void = { _ in }
+    ) {
+        self.openSettings = openSettings
+        self.openSession = openSession
+    }
 
     var body: some View {
         ZStack {
@@ -17,14 +27,12 @@ struct SessionListView: View {
                            searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                             StartingSessionRow(path: path)
                             if !filteredSessions.isEmpty {
-                                Divider()
-                                    .overlay(VipiTheme.stroke.opacity(0.7))
-                                    .padding(.horizontal, 16)
+                                sessionDivider
                             }
                         }
 
                         ForEach(Array(filteredSessions.enumerated()), id: \.element.id) { index, session in
-                            NavigationLink(value: session) {
+                            Button { openSession(session) } label: {
                                 SessionRow(
                                     session: session,
                                     preview: preview(for: session)
@@ -37,9 +45,7 @@ struct SessionListView: View {
                             .accessibilityHint("Opens the session transcript")
 
                             if index < filteredSessions.count - 1 {
-                                Divider()
-                                    .overlay(VipiTheme.stroke.opacity(0.7))
-                                    .padding(.horizontal, 16)
+                                sessionDivider
                             }
                         }
                     }
@@ -47,9 +53,8 @@ struct SessionListView: View {
                 .refreshable { await store.connect() }
             }
         }
-        .navigationTitle("")
+        .navigationTitle("Sessions")
         .navigationBarTitleDisplayMode(.inline)
-        .searchable(text: $searchText, prompt: "Search sessions")
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 ConnectionCapsule(state: store.connectionState)
@@ -58,16 +63,17 @@ struct SessionListView: View {
                     .vipiGlass(in: Capsule())
             }
             ToolbarItem(placement: .topBarTrailing) {
-                Button { showsNewSession = true } label: {
-                    Image(systemName: "plus")
+                Button(action: openSettings) {
+                    Image(systemName: "gearshape")
                         .font(.body.weight(.semibold))
                         .frame(width: 44, height: 44)
                 }
-                .controlSize(.large)
-                .disabled(!canCreateSession)
-                .accessibilityIdentifier("sessions.add")
-                .accessibilityLabel("New session")
+                .accessibilityIdentifier("sessions.settings")
+                .accessibilityLabel("Settings")
             }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            bottomControls
         }
         .sheet(isPresented: $showsNewSession) {
             NewSessionSheet()
@@ -75,6 +81,58 @@ struct SessionListView: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
+    }
+
+    private var sessionDivider: some View {
+        Divider()
+            .overlay(VipiTheme.stroke.opacity(0.66))
+            .padding(.leading, 36)
+            .padding(.trailing, 16)
+    }
+
+    private var bottomControls: some View {
+        HStack(spacing: 10) {
+            HStack(spacing: 10) {
+                Image(systemName: "magnifyingglass")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(VipiTheme.secondary)
+
+                TextField("Search", text: $searchText)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .accessibilityIdentifier("sessions.search")
+
+                if !searchText.isEmpty {
+                    Button { searchText = "" } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(VipiTheme.secondary)
+                            .frame(width: 28, height: 28)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Clear search")
+                }
+            }
+            .padding(.leading, 18)
+            .padding(.trailing, 10)
+            .frame(maxWidth: .infinity, minHeight: 54)
+            .vipiGlass(interactive: true, in: Capsule())
+
+            Button { showsNewSession = true } label: {
+                Image(systemName: "plus")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(canCreateSession ? VipiTheme.primary : VipiTheme.secondary)
+                    .frame(width: 54, height: 54)
+                    .contentShape(Circle())
+                    .vipiGlass(interactive: true, in: Circle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!canCreateSession)
+            .accessibilityIdentifier("sessions.add")
+            .accessibilityLabel("New session")
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 8)
+        .padding(.bottom, 7)
     }
 
     @ViewBuilder
@@ -365,8 +423,13 @@ private struct SessionRow: View {
     let preview: String
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .leading, spacing: 7) {
+        HStack(alignment: .center, spacing: 10) {
+            Circle()
+                .fill(session.hasUnreadResponse ? VipiTheme.primary : Color.clear)
+                .frame(width: 8, height: 8)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 7) {
                     Text(session.name)
                         .font(.body.weight(session.hasUnreadResponse ? .bold : .semibold))
@@ -388,27 +451,22 @@ private struct SessionRow: View {
 
             Spacer(minLength: 8)
 
-            VStack(alignment: .trailing, spacing: 8) {
+            HStack(spacing: 5) {
                 Text(SessionListTimeFormatter.string(from: session.lastActivityAt))
-                    .font(.caption.monospacedDigit())
+                    .font(.subheadline.monospacedDigit())
                     .foregroundStyle(VipiTheme.secondary)
                     .lineLimit(1)
 
-                if session.hasUnreadResponse {
-                    Text("1")
-                        .font(.caption2.bold())
-                        .foregroundStyle(.white)
-                        .frame(minWidth: 20, minHeight: 20)
-                        .background(VipiTheme.danger, in: Capsule())
-                        .accessibilityLabel("읽지 않은 응답 1개")
-                }
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(VipiTheme.secondary.opacity(0.65))
             }
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 14)
+        .padding(.leading, 18)
+        .padding(.trailing, 14)
+        .padding(.vertical, 13)
         .frame(maxWidth: .infinity, minHeight: 76, alignment: .leading)
         .contentShape(Rectangle())
-        .background(session.hasUnreadResponse ? VipiTheme.accent.opacity(0.055) : Color.clear)
     }
 }
 
