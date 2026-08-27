@@ -424,30 +424,33 @@ private struct SessionRow: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
-            Group {
-                if session.phase == .working {
-                    ProgressView()
-                        .controlSize(.mini)
-                        .tint(VipiTheme.accent)
-                } else {
-                    Circle()
-                        .fill(session.hasUnreadResponse ? VipiTheme.primary : Color.clear)
-                        .frame(width: 8, height: 8)
-                }
-            }
-            .frame(width: 12, height: 12)
-            .accessibilityHidden(true)
-
             VStack(alignment: .leading, spacing: 5) {
-                Text(session.name)
-                    .font(.body.weight(session.hasUnreadResponse ? .bold : .semibold))
-                    .foregroundStyle(VipiTheme.primary)
-                    .lineLimit(1)
+                HStack(spacing: 8) {
+                    Group {
+                        if session.phase == .working {
+                            ProgressView()
+                                .controlSize(.mini)
+                                .tint(VipiTheme.accent)
+                        } else {
+                            Circle()
+                                .fill(session.hasUnreadResponse ? VipiTheme.primary : Color.clear)
+                                .frame(width: 8, height: 8)
+                        }
+                    }
+                    .frame(width: 12, height: 12)
+                    .accessibilityHidden(true)
+
+                    Text(session.name)
+                        .font(.body.weight(session.hasUnreadResponse ? .bold : .semibold))
+                        .foregroundStyle(VipiTheme.primary)
+                        .lineLimit(1)
+                }
 
                 Text(preview)
                     .font(.subheadline)
                     .foregroundStyle(VipiTheme.secondary)
                     .lineLimit(2)
+                    .padding(.leading, 20)
             }
 
             Spacer(minLength: 8)
