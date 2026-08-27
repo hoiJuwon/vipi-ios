@@ -12,10 +12,10 @@ The repository contains all three layers needed for the product:
 
 Implemented app surfaces:
 
-- workspace-grouped live session list with remote folder selection and new tmux Pi session creation
+- provider-filtered Pi and Codex session list with remote folder selection and isolated new-session creation
 - working, input-needed, completed, unread, and offline states
 - final-answer chat transcript with intermediate tool output omitted
-- prompt / queue / steer composer
+- prompt / queue / steer composer for Pi and Codex threads
 - compact Thinking / Reading / Editing / Running progress with elapsed time
 - model, thinking, and context status
 - session details and conversation-branch sheets
@@ -89,6 +89,17 @@ Environment overrides:
 ```bash
 VIPI_HOST=127.0.0.1 VIPI_PORT=8765 npm run host
 ```
+
+### Optional Codex provider
+
+Vipi uses Codex's managed app-server daemon rather than launching the Electron app or reading Codex persistence directly:
+
+```bash
+codex remote-control start
+codex app-server daemon version
+```
+
+The host connects only to the current user's private `~/.codex/app-server-control/app-server-control.sock`, requests state-DB-only session metadata, and pages recent turns lazily. Codex credentials and raw rollout files stay on the Mac. Set `VIPI_CODEX_ENABLED=0` to disable this provider, or `VIPI_CODEX_SOCKET=/absolute/private/socket` when using a nondefault `CODEX_HOME`.
 
 ## Tailscale
 

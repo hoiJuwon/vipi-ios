@@ -59,6 +59,7 @@ struct UploadedAttachment: Decodable, Sendable {
 
 struct PromptPayload: Encodable {
     let sessionID: String
+    let clientMessageID: String
     let text: String
     let delivery: PromptDelivery
     let annotations: [ChatAnnotation]
@@ -66,7 +67,10 @@ struct PromptPayload: Encodable {
 }
 struct RenamePayload: Encodable { let sessionID: String; let name: String }
 struct WorkspaceBrowsePayload: Encodable { let path: String? }
-struct SessionCreatePayload: Encodable { let cwd: String }
+struct SessionCreatePayload: Encodable {
+    let cwd: String
+    let provider: AgentProvider
+}
 struct PushRegistrationPayload: Encodable {
     let deviceToken: String
     let environment: String

@@ -12,6 +12,7 @@ import { mobileActivityForTool, normalizeHistory } from "./normalization.js";
 import { readSessionBranch } from "./session-history.js";
 import { browseWorkspace, launchSession, listWorkspaces } from "./workspaces.js";
 import { pushStatus, registerPushDevice, sendSessionCompletedPush, unregisterPushDevice } from "./push.js";
+import { CodexProvider } from "./codex-provider.js";
 
 const host = process.env.VIPI_HOST ?? "127.0.0.1";
 const port = Number(process.env.VIPI_PORT ?? "8765");
@@ -44,7 +45,22 @@ type PendingAttachment = { id: string; digest: string; mimeType: string; path: s
 const pendingAttachments = new Map<string, PendingAttachment>();
 const requestAttachments = new Map<string, string[]>();
 let sessionCreationInFlight = false;
+let codexSessionCreationInFlight = false;
 mkdirSync(attachmentDirectory, { recursive: true, mode: 0o700 });
+
+const codex = new CodexProvider({
+  onStateChange: () => broadcastEphemeral("providers.snapshot", providerSnapshot()),
+  onSessionsChanged: () => broadcast("sessions.snapshot", { sessions: mergedSessions() }),
+  onEvent: (sessionID, event) => broadcast("session.event", { sessionID, event }),
+  onInteraction: (interaction) => {
+    if (mobileClients.size === 0) {
+      codex.respondToInteraction(interaction.requestID, false);
+      return;
+    }
+    pendingInteractions.set(interaction.requestID, interaction.sessionID);
+    broadcastEphemeral("session.interaction", interaction);
+  },
+});
 
 const server = createServer((request, response) => {
   if (request.method === "POST" && request.url === "/attachments") {
@@ -59,6 +75,7 @@ const server = createServer((request, response) => {
       sessions: mergedSessions().length,
       mobileClients: mobileClients.size,
       runtimes: runtimes.size,
+      providers: providerSnapshot(),
       push: pushStatus(),
     }));
     return;
@@ -89,12 +106,12 @@ function receiveAttachment(request: IncomingMessage, response: ServerResponse): 
     return;
   }
   const sessionID = typeof request.headers["x-vipi-session-id"] === "string" ? request.headers["x-vipi-session-id"] : undefined;
-  if (!sessionID || !currentRuntime(sessionID)) {
+  if (!sessionID || (!currentRuntime(sessionID) && !codex.hasSession(sessionID))) {
     response.writeHead(404, { "content-type": "application/json" }).end(JSON.stringify({ error: "SESSION_OFFLINE" }));
     request.resume();
     return;
   }
-  if (runtimeCapabilities.get(sessionID)?.imageAttachments !== true) {
+  if (!codex.hasSession(sessionID) && runtimeCapabilities.get(sessionID)?.imageAttachments !== true) {
     response.writeHead(409, { "content-type": "application/json" }).end(JSON.stringify({ error: "RUNTIME_UPDATE_REQUIRED" }));
     request.resume();
     return;
@@ -171,7 +188,7 @@ wss.on("connection", (socket) => {
         notifyRuntimeMobilePresence();
         const lastSeq = typeof message.payload?.lastSeq === "number" ? message.payload.lastSeq : undefined;
         const brokerHead = sequence;
-        socket.send(JSON.stringify(envelope("auth.ok", { role }, message.id, ++sequence)));
+        socket.send(JSON.stringify(envelope("auth.ok", { role, ...providerSnapshot() }, message.id, ++sequence)));
         const oldestSeq = replayBuffer[0]?.seq ?? brokerHead;
         if (lastSeq !== undefined && lastSeq >= oldestSeq - 1 && lastSeq <= brokerHead) {
           for (const item of replayBuffer) if ((item.seq ?? 0) > lastSeq) socket.send(JSON.stringify(item));
@@ -323,14 +340,20 @@ wss.on("connection", (socket) => {
       return;
     }
     if (message.type === "session.create") {
-      if (sessionCreationInFlight) {
+      const provider = message.payload?.provider === "codex" ? "codex" : "pi";
+      const inFlight = provider === "codex" ? codexSessionCreationInFlight : sessionCreationInFlight;
+      if (inFlight) {
         socket.send(JSON.stringify(envelope("session.response", {
           requestID: message.id, ok: false, result: { error: "Another session is already starting." },
         }, message.id, ++sequence)));
         return;
       }
-      sessionCreationInFlight = true;
-      void launchSession(message.payload?.cwd)
+      if (provider === "codex") codexSessionCreationInFlight = true;
+      else sessionCreationInFlight = true;
+      const creation = provider === "codex"
+        ? codex.create(String(message.payload?.cwd ?? ""))
+        : launchSession(message.payload?.cwd);
+      void creation
         .then((result) => {
           if (socket.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify(envelope("session.response", {
@@ -344,11 +367,14 @@ wss.on("connection", (socket) => {
             socket.send(JSON.stringify(envelope("session.response", {
               requestID: message.id,
               ok: false,
-              result: { error: error instanceof Error ? error.message : "The Pi session could not be started." },
+              result: { error: error instanceof Error ? error.message : `The ${provider === "codex" ? "Codex" : "Pi"} session could not be started.` },
             }, message.id, ++sequence)));
           }
         })
-        .finally(() => { sessionCreationInFlight = false; });
+        .finally(() => {
+          if (provider === "codex") codexSessionCreationInFlight = false;
+          else sessionCreationInFlight = false;
+        });
       return;
     }
     if (message.type === "auth.rotate") {
@@ -361,6 +387,14 @@ wss.on("connection", (socket) => {
       const requestID = typeof message.payload?.requestID === "string" ? message.payload.requestID : undefined;
       const sessionID = typeof message.payload?.sessionID === "string" ? message.payload.sessionID : undefined;
       const registeredSessionID = requestID ? pendingInteractions.get(requestID) : undefined;
+      if (requestID && sessionID?.startsWith("codex:") && registeredSessionID === sessionID) {
+        const response = message.payload?.response;
+        const allow = response === true;
+        const ok = codex.respondToInteraction(requestID, allow);
+        pendingInteractions.delete(requestID);
+        socket.send(JSON.stringify(envelope("session.response", { requestID: message.id, ok }, message.id, ++sequence)));
+        return;
+      }
       const runtime = sessionID && registeredSessionID === sessionID ? currentRuntime(sessionID) : undefined;
       if (!requestID || !runtime || runtime.readyState !== WebSocket.OPEN) {
         socket.send(JSON.stringify(envelope("error", { code: "INTERACTION_EXPIRED" }, message.id, ++sequence)));
@@ -373,6 +407,11 @@ wss.on("connection", (socket) => {
     }
     if (message.type === "session.read") {
       const sessionID = message.payload?.sessionID;
+      if (typeof sessionID === "string" && codex.hasSession(sessionID)) {
+        codex.markRead(sessionID);
+        socket.send(JSON.stringify(envelope("session.response", { requestID: message.id, ok: true }, message.id, ++sequence)));
+        return;
+      }
       const ok = typeof sessionID === "string" && setTmuxSessionUnread(sessionID, false);
       socket.send(JSON.stringify(envelope("session.response", {
         requestID: message.id,
@@ -392,6 +431,10 @@ wss.on("connection", (socket) => {
     }
     const sessionID = message.payload?.sessionID;
     if (typeof sessionID !== "string") return;
+    if (codex.hasSession(sessionID)) {
+      void handleCodexCommand(socket, message, sessionID);
+      return;
+    }
     if (message.type === "session.history") {
       const session = mergedSessions().find((candidate) => candidate.id === sessionID);
       if (session?.sessionFile) {
@@ -476,6 +519,73 @@ wss.on("connection", (socket) => {
   });
 });
 
+async function handleCodexCommand(
+  socket: WebSocket,
+  message: Envelope<Record<string, unknown>>,
+  sessionID: string,
+): Promise<void> {
+  try {
+    if (message.type === "session.history") {
+      const result = await codex.history(sessionID, {
+        beforeEntryID: typeof message.payload?.beforeEntryID === "string" ? message.payload.beforeEntryID : undefined,
+        limit: typeof message.payload?.limit === "number" ? message.payload.limit : undefined,
+      });
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify(envelope("session.response", { requestID: message.id, ok: true, result }, message.id, ++sequence)));
+      }
+      return;
+    }
+    if (message.type === "session.prompt") {
+      const attachmentIDs = Array.isArray(message.payload?.attachments)
+        ? message.payload.attachments.flatMap((value): string[] => {
+            if (!value || typeof value !== "object") return [];
+            const id = (value as Record<string, unknown>).id;
+            return typeof id === "string" ? [id] : [];
+          }).slice(0, 4)
+        : [];
+      const attachments = attachmentIDs.map((id) => pendingAttachments.get(id));
+      if (attachments.some((attachment) => !attachment || attachment.sessionID !== sessionID || attachment.expiresAt <= Date.now())) {
+        throw new Error("One of the selected photos expired before it could be sent.");
+      }
+      const annotations = Array.isArray(message.payload?.annotations)
+        ? message.payload.annotations.flatMap((value): string[] => {
+            if (!value || typeof value !== "object") return [];
+            const text = (value as Record<string, unknown>).text;
+            return typeof text === "string" && text.trim() ? [text.trim()] : [];
+          }).slice(0, 4)
+        : [];
+      const promptText = typeof message.payload?.text === "string" ? message.payload.text : "";
+      const text = annotations.length > 0
+        ? `${annotations.map((value) => `> ${value.replace(/\n/g, "\n> ")}`).join("\n\n")}\n\n${promptText}`
+        : promptText;
+      await codex.prompt({
+        ...message.payload,
+        text,
+        attachments: attachments.flatMap((attachment) => attachment ? [{ path: attachment.path }] : []),
+      });
+      for (const id of attachmentIDs) removeAttachment(id);
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify(envelope("session.response", { requestID: message.id, ok: true }, message.id, ++sequence)));
+      }
+      return;
+    }
+    if (message.type === "session.abort") await codex.abort(sessionID);
+    else if (message.type === "session.compact") await codex.compact(sessionID);
+    else throw new Error("Unsupported Codex command");
+    if (socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify(envelope("session.response", { requestID: message.id, ok: true }, message.id, ++sequence)));
+    }
+  } catch (error) {
+    if (socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify(envelope("session.response", {
+        requestID: message.id,
+        ok: false,
+        result: { error: error instanceof Error ? error.message : "Codex could not complete the request." },
+      }, message.id, ++sequence)));
+    }
+  }
+}
+
 function currentRuntime(sessionID: string): WebSocket | undefined {
   const runtime = runtimes.get(sessionID);
   if (!runtime || runtime.readyState !== WebSocket.OPEN) return undefined;
@@ -497,11 +607,12 @@ function mergedSessions(): SessionRecord[] {
   const visibleIDs = new Set(treeSessions.map((session) => session.id));
   for (const id of liveSessions.keys()) if (!visibleIDs.has(id)) liveSessions.delete(id);
 
-  return treeSessions.map((treeSession): SessionRecord => {
+  const piSessions = treeSessions.map((treeSession): SessionRecord => {
     const live = currentRuntime(treeSession.id) ? liveSessions.get(treeSession.id) : undefined;
-    if (!live) return { ...treeSession, phase: "offline" };
+    if (!live) return { ...treeSession, provider: "pi", phase: "offline" };
     return {
       ...treeSession,
+      provider: "pi",
       phase: live.phase,
       lastActivityAt: live.lastActivityAt,
       lastMessagePreview: live.lastMessagePreview ?? treeSession.lastMessagePreview,
@@ -510,7 +621,17 @@ function mergedSessions(): SessionRecord[] {
       branch: live.branch,
       contextPercent: live.contextPercent,
     };
-  }).sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt));
+  });
+  return [...piSessions, ...codex.sessions()].sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt));
+}
+
+function providerSnapshot(): { providers: Array<{ id: "pi" | "codex"; state: string; detail?: string }> } {
+  return {
+    providers: [
+      { id: "pi", state: runtimes.size > 0 ? "connected" : "disconnected" },
+      { id: "codex", state: codex.state, ...(codex.detail ? { detail: codex.detail } : {}) },
+    ],
+  };
 }
 
 function treeFingerprint(): string {
@@ -592,7 +713,12 @@ function broadcastEphemeral(type: string, payload: unknown): void {
 
 function notifyRuntimeMobilePresence(): void {
   const connected = mobileClients.size > 0;
-  if (!connected) pendingInteractions.clear();
+  if (!connected) {
+    for (const requestID of pendingInteractions.keys()) {
+      if (requestID.startsWith("codex-approval:")) codex.respondToInteraction(requestID, false);
+    }
+    pendingInteractions.clear();
+  }
   const data = JSON.stringify(envelope("runtime.mobilePresence", { connected }, undefined, ++sequence));
   for (const runtime of runtimes.values()) if (runtime.readyState === WebSocket.OPEN) runtime.send(data);
 }
@@ -604,6 +730,8 @@ function broadcast(type: string, payload: unknown): void {
   const data = JSON.stringify(item);
   for (const client of mobileClients) if (client.readyState === WebSocket.OPEN) client.send(data);
 }
+
+codex.start();
 
 server.listen(port, host, () => {
   const local = `http://${host}:${port}`;

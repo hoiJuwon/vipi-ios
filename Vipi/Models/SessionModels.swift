@@ -1,6 +1,17 @@
 import Foundation
 import SwiftUI
 
+enum AgentProvider: String, Codable, CaseIterable, Sendable {
+    case pi, codex
+
+    var displayName: String {
+        switch self {
+        case .pi: "Vipi"
+        case .codex: "Codex"
+        }
+    }
+}
+
 enum SessionPhase: String, Codable, CaseIterable, Sendable {
     case idle, working, waitingForInput, completed, failed, offline
 
@@ -35,6 +46,7 @@ struct TmuxCoordinates: Codable, Hashable, Sendable {
 
 struct RemoteSession: Identifiable, Codable, Hashable, Sendable {
     var id: String
+    var provider: AgentProvider? = nil
     var name: String
     var cwd: String
     var phase: SessionPhase
@@ -47,6 +59,8 @@ struct RemoteSession: Identifiable, Codable, Hashable, Sendable {
     var contextPercent: Int
     var tmux: TmuxCoordinates
     var sessionFile: String?
+
+    var agentProvider: AgentProvider { provider ?? .pi }
 
     var workspaceName: String {
         URL(fileURLWithPath: cwd).lastPathComponent.isEmpty ? cwd : URL(fileURLWithPath: cwd).lastPathComponent
@@ -68,5 +82,5 @@ struct WorkspaceDirectoryListing: Equatable, Sendable {
 enum SessionCreationRequest: Equatable {
     case workspaces
     case browse
-    case create(path: String)
+    case create(path: String, provider: AgentProvider)
 }

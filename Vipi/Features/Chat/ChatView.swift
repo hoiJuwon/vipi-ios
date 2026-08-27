@@ -37,6 +37,7 @@ struct ChatView: View {
                 imageAttachments: store.draftImages(for: sessionID),
                 interaction: store.pendingInteractions.first(where: { $0.sessionID == sessionID }),
                 interactionSessionName: session?.name,
+                assistantName: session?.agentProvider == .codex ? "Codex" : "Pi",
                 onRemoveAnnotation: { store.removeAnnotation($0, from: sessionID) },
                 onAddImage: { store.addDraftImage($0, to: sessionID) },
                 onRemoveImage: { store.removeDraftImage($0, from: sessionID) },

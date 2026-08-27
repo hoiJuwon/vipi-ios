@@ -12,6 +12,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { normalizeHistory, normalizeMessage, normalizeToolEvent } from "../src/normalization.js";
 import { readSessionBranch } from "../src/session-history.js";
 import { createPairingPayload } from "../src/pairing.js";
+import { normalizeCodexThread, normalizeCodexTurns } from "../src/codex-provider.js";
 
 const protocolVersion = 1;
 let child: ChildProcess;
@@ -95,6 +96,7 @@ before(async () => {
       VIPI_WORKSPACE_ROOT: workspaceRoot,
       VIPI_TMUX_EXECUTABLE: fakeTmux,
       VIPI_PI_EXECUTABLE: fakePi,
+      VIPI_CODEX_ENABLED: "0",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -113,6 +115,40 @@ before(async () => {
 after(async () => {
   child.kill("SIGTERM");
   await rm(directory, { recursive: true, force: true });
+});
+
+test("normalizes Codex threads without exposing its local persistence path", () => {
+  const session = normalizeCodexThread({
+    id: "thread-1",
+    name: null,
+    preview: "Fast Codex thread&#x20;",
+    cwd: "/Users/test/project",
+    updatedAt: 1_700_000_000,
+    status: { type: "active", activeFlags: ["waitingOnApproval"] },
+  });
+  assert.equal(session.id, "codex:thread-1");
+  assert.equal(session.provider, "codex");
+  assert.equal(session.name, "Fast Codex thread");
+  assert.equal(session.phase, "waitingForInput");
+  assert.equal(session.sessionFile, undefined);
+});
+
+test("normalizes only user and final assistant content from paginated Codex turns", () => {
+  const events = normalizeCodexTurns([{
+    id: "turn-1",
+    startedAt: 1_700_000_000,
+    completedAt: 1_700_000_001,
+    items: [
+      { type: "userMessage", id: "user-1", content: [{ type: "text", text: "Hello" }] },
+      { type: "reasoning", id: "reasoning-1", summary: ["private progress"] },
+      { type: "agentMessage", id: "assistant-1", text: "First" },
+      { type: "agentMessage", id: "assistant-2", text: "Final" },
+    ],
+  }]);
+  assert.deepEqual(events.map((event) => event.kind === "message" ? [event.role, event.text] : []), [
+    ["user", "Hello"],
+    ["assistant", "Final"],
+  ]);
 });
 
 test("creates pairing payloads only for public HTTPS Tailscale hosts", () => {

@@ -76,6 +76,37 @@ final class SessionModelTests: XCTestCase {
         XCTAssertTrue(succeeded)
     }
 
+    @MainActor func testProviderSelectionFiltersSessionsWithoutMutatingPiState() {
+        let store = AppStore(startsInDemoMode: true)
+        let originalPiCount = store.sessions.count
+        store.sessions.append(RemoteSession(
+            id: "codex:thread-1",
+            provider: .codex,
+            name: "Codex thread",
+            cwd: "/tmp/project",
+            phase: .idle,
+            unread: false,
+            lastActivityAt: .now,
+            model: "Codex",
+            thinkingLevel: "—",
+            contextPercent: 0,
+            tmux: TmuxCoordinates(session: "", window: "", paneID: "codex:thread-1")
+        ))
+
+        store.selectProvider(.codex)
+        XCTAssertEqual(store.visibleSessions.map(\.id), ["codex:thread-1"])
+        store.selectProvider(.pi)
+        XCTAssertEqual(store.visibleSessions.count, originalPiCount)
+    }
+
+    @MainActor func testProviderSnapshotTracksCodexConnectionIndependently() async throws {
+        let store = AppStore(startsInDemoMode: true)
+        let data = Data(#"{"type":"providers.snapshot","payload":{"providers":[{"id":"pi","state":"connected"},{"id":"codex","state":"connecting"}]}}"#.utf8)
+        await store.handle(try JSONDecoder().decode(ServerEnvelope.self, from: data))
+        XCTAssertEqual(store.codexConnectionState, .connecting)
+        XCTAssertEqual(store.connectionState, .demo)
+    }
+
     func testNotificationSessionRequestPersistsUntilNavigationConsumesIt() async {
         let store = await AppStore(startsInDemoMode: true)
         await store.requestSessionFromNotification("mobile")

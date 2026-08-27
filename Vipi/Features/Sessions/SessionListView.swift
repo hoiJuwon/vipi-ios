@@ -57,10 +57,8 @@ struct SessionListView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                ConnectionCapsule(state: store.connectionState)
-                    .padding(.horizontal, 11)
-                    .padding(.vertical, 7)
-                    .vipiGlass(in: Capsule())
+                ProviderConnectionControl()
+                    .frame(width: 44, height: 44)
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button(action: openSettings) {
@@ -139,9 +137,9 @@ struct SessionListView: View {
     private var emptyState: some View {
         if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             ContentUnavailableView(
-                "No paired sessions",
-                systemImage: "lock.shield",
-                description: Text("Open Settings to pair your Tailscale host, or explicitly choose demo data.")
+                store.selectedProvider == .codex ? "No Codex sessions" : "No paired sessions",
+                systemImage: store.selectedProvider == .codex ? "apple.terminal" : "lock.shield",
+                description: Text(emptyDescription)
             )
             .accessibilityIdentifier("sessions.empty")
         } else {
@@ -149,15 +147,22 @@ struct SessionListView: View {
         }
     }
 
+    private var emptyDescription: String {
+        if store.selectedProvider == .codex {
+            return "Keep the Codex app-server daemon running on your paired Mac, then start a session here."
+        }
+        return "Open Settings to pair your Tailscale host, or explicitly choose demo data."
+    }
+
     private var canCreateSession: Bool {
-        switch store.connectionState {
+        switch store.connectionState(for: store.selectedProvider) {
         case .connected, .demo: true
         case .connecting, .disconnected: false
         }
     }
 
     private var filteredSessions: [RemoteSession] {
-        let sorted = store.sessions.sorted { $0.lastActivityAt > $1.lastActivityAt }
+        let sorted = store.visibleSessions.sorted { $0.lastActivityAt > $1.lastActivityAt }
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return sorted }
         return sorted.filter { SessionListSearch.matches($0, query: query) }

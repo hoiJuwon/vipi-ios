@@ -63,6 +63,24 @@ final class VipiUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["기타 / 새 세션"].waitForExistence(timeout: 5))
     }
 
+    func testProviderSelectorSwitchesWithoutChangingPiSessions() {
+        let selector = app.buttons["connection.status"]
+        XCTAssertTrue(selector.waitForExistence(timeout: 5))
+        XCTAssertTrue(selector.isHittable)
+        selector.tap()
+
+        let codex = app.buttons["provider.codex"]
+        XCTAssertTrue(codex.waitForExistence(timeout: 3))
+        codex.tap()
+        XCTAssertTrue(app.staticTexts["No Codex sessions"].waitForExistence(timeout: 3))
+
+        app.buttons["connection.status"].tap()
+        let pi = app.buttons["provider.pi"]
+        XCTAssertTrue(pi.waitForExistence(timeout: 3))
+        pi.tap()
+        XCTAssertTrue(app.buttons["session.mobile"].waitForExistence(timeout: 3))
+    }
+
     func testOpenSessionAndSendPrompt() {
         XCTAssertFalse(app.tabBars.buttons["Activity"].exists)
         let session = app.buttons["session.mobile"]
@@ -188,7 +206,7 @@ final class VipiUITests: XCTestCase {
     }
 
     func testVoiceOverSemanticsAndNavigation() {
-        let connection = app.otherElements["connection.status"].firstMatch
+        let connection = app.buttons["connection.status"].firstMatch
         XCTAssertTrue(connection.waitForExistence(timeout: 5))
         XCTAssertEqual(connection.label, "Connection")
         XCTAssertFalse((connection.value as? String ?? "").isEmpty)

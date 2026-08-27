@@ -9,6 +9,8 @@ final class AppStore {
     var messagesBySession: [String: [ChatMessage]] = [:]
     var branchesBySession: [String: [BranchNode]] = [:]
     var connectionState: ConnectionState = .disconnected(nil)
+    var codexConnectionState: ConnectionState = .disconnected(nil)
+    var selectedProvider: AgentProvider = .pi
     var host = ""
     var token = ""
     var selectedSessionID: String?
@@ -74,11 +76,18 @@ final class AppStore {
             #endif
             host = UserDefaults.standard.string(forKey: "vipi.host") ?? ""
         }
+        if let storedProvider = UserDefaults.standard.string(forKey: "vipi.selectedProvider").flatMap(AgentProvider.init(rawValue:)) {
+            selectedProvider = storedProvider
+        }
         if startsInDemoMode { loadDemoData() }
     }
 
+    var visibleSessions: [RemoteSession] {
+        sessions.filter { $0.agentProvider == selectedProvider }
+    }
+
     var workspaceGroups: [WorkspaceGroup] {
-        Dictionary(grouping: sessions, by: \.cwd)
+        Dictionary(grouping: visibleSessions, by: \.cwd)
             .map { WorkspaceGroup(path: $0.key, sessions: $0.value.sorted { $0.lastActivityAt > $1.lastActivityAt }) }
             .sorted { lhs, rhs in
                 let lhsWorking = lhs.sessions.contains { $0.phase == .working }
@@ -88,6 +97,14 @@ final class AppStore {
     }
 
     func session(id: String) -> RemoteSession? { sessions.first { $0.id == id } }
+    func connectionState(for provider: AgentProvider) -> ConnectionState {
+        guard connectionState == .connected || connectionState == .demo else { return connectionState }
+        return provider == .pi ? connectionState : codexConnectionState
+    }
+    func selectProvider(_ provider: AgentProvider) {
+        selectedProvider = provider
+        UserDefaults.standard.set(provider.rawValue, forKey: "vipi.selectedProvider")
+    }
     func lastEntryForTesting(sessionID: String) -> String? { lastEntryBySession[sessionID] }
     func registerHistoryRequestForTesting(id: String, sessionID: String) {
         pendingHistoryRequests[id] = PendingHistoryRequest(sessionID: sessionID, direction: .initial)
@@ -202,6 +219,7 @@ final class AppStore {
     }
 
     private func loadDemoData() {
+        selectedProvider = .pi
         sessions = MockData.sessions
         messagesBySession = MockData.messages
         branchesBySession = MockData.branches
@@ -296,6 +314,7 @@ final class AppStore {
                 type: "session.prompt",
                 payload: PromptPayload(
                     sessionID: sessionID,
+                    clientMessageID: message.id,
                     text: text,
                     delivery: delivery,
                     annotations: annotations,
@@ -440,6 +459,7 @@ final class AppStore {
             let now = Date.now
             sessions.insert(RemoteSession(
                 id: "demo-\(UUID().uuidString)",
+                provider: selectedProvider,
                 name: "기타 / 새 세션",
                 cwd: path,
                 phase: .idle,
@@ -464,8 +484,11 @@ final class AppStore {
             return
         }
         do {
-            let requestID = try await broker.send(type: "session.create", payload: SessionCreatePayload(cwd: path))
-            pendingSessionCreationRequests[requestID] = .create(path: path)
+            let requestID = try await broker.send(
+                type: "session.create",
+                payload: SessionCreatePayload(cwd: path, provider: selectedProvider)
+            )
+            pendingSessionCreationRequests[requestID] = .create(path: path, provider: selectedProvider)
             scheduleSessionCreationTimeout(requestID, seconds: 15)
         } catch {
             isCreatingSession = false
@@ -659,7 +682,7 @@ final class AppStore {
                 parent: result.parent,
                 directories: result.directories
             )
-        case .create(let path):
+        case .create(let path, let provider):
             isCreatingSession = false
             guard let response: SessionCreateCommandResponse = decode(payload), response.ok,
                   let result = response.result else {
@@ -677,7 +700,7 @@ final class AppStore {
                 guard let self, self.startingSessionPaneID == result.paneID else { return }
                 self.startingSessionPath = nil
                 self.startingSessionPaneID = nil
-                self.commandError = "The new Pi session did not finish starting."
+                self.commandError = "The new \(provider.displayName) session did not finish starting."
             }
         }
     }
@@ -716,10 +739,18 @@ final class AppStore {
         // protocol can evolve without coupling wire payloads to SwiftUI views.
         if envelope.type == "auth.ok" {
             connectionState = .connected
+            if let payload = envelope.payload, let snapshot: ProviderSnapshot = decode(payload) {
+                applyProviderSnapshot(snapshot)
+            }
             UserDefaults.standard.set(host, forKey: "vipi.host")
             try? KeychainStore.saveToken(token)
             persistSimulatorToken(token)
             await registerPushDeviceIfAvailable()
+            return
+        }
+        if envelope.type == "providers.snapshot", let payload = envelope.payload,
+           let snapshot: ProviderSnapshot = decode(payload) {
+            applyProviderSnapshot(snapshot)
             return
         }
         if envelope.type == "auth.rotated",
@@ -843,6 +874,15 @@ final class AppStore {
         }
     }
 
+    private func applyProviderSnapshot(_ snapshot: ProviderSnapshot) {
+        guard let codex = snapshot.providers.first(where: { $0.id == .codex }) else { return }
+        switch codex.state {
+        case "connected": codexConnectionState = .connected
+        case "connecting": codexConnectionState = .connecting
+        default: codexConnectionState = .disconnected(codex.detail)
+        }
+    }
+
     private func persistSimulatorToken(_ value: String) {
         #if targetEnvironment(simulator)
         // Simulator-only fallback keeps live development pairing across app
@@ -850,6 +890,16 @@ final class AppStore {
         UserDefaults.standard.set(value, forKey: "vipi.simulatorToken")
         #endif
     }
+}
+
+private struct ProviderSnapshot: Decodable {
+    let providers: [ProviderStatus]
+}
+
+private struct ProviderStatus: Decodable {
+    let id: AgentProvider
+    let state: String
+    let detail: String?
 }
 
 private struct PushCommandResponse: Decodable {

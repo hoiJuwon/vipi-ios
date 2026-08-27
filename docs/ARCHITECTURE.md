@@ -6,7 +6,7 @@ Vipi is a semantic chat client, not a remote terminal. Vim editing, EX commands,
 
 ## Identity
 
-A session is keyed by Pi's stable `sessionId`. Runtime metadata may additionally include `tmuxSession`, `tmuxWindow`, and `tmuxPaneId`, but those coordinates are diagnostic and must not become user-facing identity.
+Session IDs are provider-namespaced at the mobile boundary. Existing Pi sessions retain their stable `sessionId` semantics and decode as provider `pi`; Codex threads use `codex:<threadId>`. Pi runtime metadata may additionally include `tmuxSession`, `tmuxWindow`, and `tmuxPaneId`, but those coordinates are diagnostic and must not become user-facing identity.
 
 ## Ownership invariant
 
@@ -20,12 +20,20 @@ Future offline resume can use an RPC worker only after acquiring an explicit mob
 Tailnet device
   → Tailscale HTTPS/WSS
   → loopback broker
-  → authenticated runtime socket
-  → Pi extension API
+      ├→ authenticated Pi runtime socket → Pi extension API
+      └→ private 0600 Unix socket → Codex app-server daemon
   → user account tools/files
 ```
 
-The device token is defense in depth in addition to tailnet membership. The app persists it as a this-device-only Keychain item and supports authenticated rotation. The host enforces loopback binding by default, rate limits sockets, never logs payloads or bearer values, and is intended to sit behind tailnet-only Tailscale Serve. Commands are allowlisted and correlated without opening a second session writer. Remote folder browsing resolves canonical directories and is limited to the host user's home directory plus explicitly registered workspace roots.
+The device token is defense in depth in addition to tailnet membership. The app persists it as a this-device-only Keychain item and supports authenticated rotation. The host enforces loopback binding by default, rate limits sockets, never logs payloads or bearer values, and is intended to sit behind tailnet-only Tailscale Serve. Commands are allowlisted and correlated without opening a second session writer. Remote folder browsing resolves canonical directories and is limited to the host user's home directory plus explicitly registered workspace roots. Codex credentials, databases, and rollout files never cross this boundary; only the local app-server protocol is used.
+
+## Codex provider isolation
+
+Codex support is implemented as an independent host adapter. The adapter connects to the already-running managed app-server over `~/.codex/app-server-control/app-server-control.sock`, initializes as its own client, and uses `thread/list` with `useStateDbOnly`, paginated `thread/turns/list`, and live turn notifications. It never imports Codex code into the Pi extension or mutates Codex SQLite/JSONL directly.
+
+The mobile session list receives Pi and Codex records in one snapshot but filters them by the explicitly selected provider. Opening history does not resume a Codex thread; `thread/resume` is deferred until the user sends input. Only a bounded recent page is normalized into user and final assistant messages, and older pages load on demand. This keeps existing Pi routing untouched and avoids the Codex desktop app's eager-history cost. Codex approvals are converted to the existing ephemeral interaction card and responses return only to the originating Codex JSON-RPC request.
+
+The official Codex mobile Remote Control relay and Vipi may both connect to the managed daemon. Vipi does not enroll, revoke, impersonate, or reuse official controller credentials. A thread currently owned by the separate Electron desktop app may still reject resume through the managed daemon's writer lock; Vipi reports that failure rather than bypassing it.
 
 ## Protocol evolution
 

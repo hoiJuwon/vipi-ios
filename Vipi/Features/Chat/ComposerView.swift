@@ -11,6 +11,7 @@ struct ComposerView: View {
     let imageAttachments: [DraftImageAttachment]
     let interaction: RemoteInteraction?
     let interactionSessionName: String?
+    var assistantName = "Pi"
     let onRemoveAnnotation: (String) -> Void
     let onAddImage: (DraftImageAttachment) -> Void
     let onRemoveImage: (String) -> Void
@@ -102,9 +103,9 @@ struct ComposerView: View {
 
             if interaction == nil {
                 VStack(alignment: .leading, spacing: 0) {
-                    TextField(phase == .offline ? "Reconnecting session…" : "Message Pi…", text: $draft, axis: .vertical)
+                    TextField(phase == .offline ? "Reconnecting session…" : "Message \(assistantName)…", text: $draft, axis: .vertical)
                         .accessibilityIdentifier("chat.composer")
-                        .accessibilityLabel("Message Pi")
+                        .accessibilityLabel("Message \(assistantName)")
                         .lineLimit(1...6)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 4)
@@ -161,7 +162,7 @@ struct ComposerView: View {
                     .disabled(!actionEnabled)
                     .accessibilityIdentifier(showsStop ? "chat.stop" : "chat.send")
                     .accessibilityLabel(showsStop ? "Stop current run" : "Send message")
-                        .accessibilityHint(showsStop ? "Stops the active Pi response" : isWorking ? "Queues this message after the active response" : "Sends a prompt to Pi")
+                        .accessibilityHint(showsStop ? "Stops the active \(assistantName) response" : isWorking ? "Queues this message after the active response" : "Sends a prompt to \(assistantName)")
                     }
                 }
             }

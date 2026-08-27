@@ -2,8 +2,11 @@ export const PROTOCOL_VERSION = 1;
 
 export type SessionPhase = "idle" | "working" | "waitingForInput" | "completed" | "failed" | "offline";
 
+export type AgentProvider = "pi" | "codex";
+
 export interface SessionRecord {
   id: string;
+  provider?: AgentProvider;
   name: string;
   cwd: string;
   phase: SessionPhase;
