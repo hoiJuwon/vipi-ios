@@ -316,26 +316,26 @@ wss.on("connection", (socket) => {
       return;
     }
     if (message.type === "workspaces.list") {
-      socket.send(JSON.stringify(envelope("session.response", {
+      sendCompatibilityResponse(socket, message.id, {
         requestID: message.id,
         ok: true,
         result: listWorkspaces(),
-      }, message.id, ++sequence)));
+      });
       return;
     }
     if (message.type === "workspaces.browse") {
       try {
-        socket.send(JSON.stringify(envelope("session.response", {
+        sendCompatibilityResponse(socket, message.id, {
           requestID: message.id,
           ok: true,
           result: browseWorkspace(message.payload?.path),
-        }, message.id, ++sequence)));
+        });
       } catch (error) {
-        socket.send(JSON.stringify(envelope("session.response", {
+        sendCompatibilityResponse(socket, message.id, {
           requestID: message.id,
           ok: false,
           result: { error: error instanceof Error ? error.message : "The directory could not be opened." },
-        }, message.id, ++sequence)));
+        });
       }
       return;
     }
@@ -343,9 +343,9 @@ wss.on("connection", (socket) => {
       const provider = message.payload?.provider === "codex" ? "codex" : "pi";
       const inFlight = provider === "codex" ? codexSessionCreationInFlight : sessionCreationInFlight;
       if (inFlight) {
-        socket.send(JSON.stringify(envelope("session.response", {
+        sendCompatibilityResponse(socket, message.id, {
           requestID: message.id, ok: false, result: { error: "Another session is already starting." },
-        }, message.id, ++sequence)));
+        });
         return;
       }
       if (provider === "codex") codexSessionCreationInFlight = true;
@@ -355,21 +355,17 @@ wss.on("connection", (socket) => {
         : launchSession(message.payload?.cwd);
       void creation
         .then((result) => {
-          if (socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify(envelope("session.response", {
-              requestID: message.id, ok: true, result,
-            }, message.id, ++sequence)));
-          }
+          sendCompatibilityResponse(socket, message.id, {
+            requestID: message.id, ok: true, result,
+          });
           broadcast("sessions.snapshot", { sessions: mergedSessions() });
         })
         .catch((error) => {
-          if (socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify(envelope("session.response", {
-              requestID: message.id,
-              ok: false,
-              result: { error: error instanceof Error ? error.message : `The ${provider === "codex" ? "Codex" : "Pi"} session could not be started.` },
-            }, message.id, ++sequence)));
-          }
+          sendCompatibilityResponse(socket, message.id, {
+            requestID: message.id,
+            ok: false,
+            result: { error: error instanceof Error ? error.message : `The ${provider === "codex" ? "Codex" : "Pi"} session could not be started.` },
+          });
         })
         .finally(() => {
           if (provider === "codex") codexSessionCreationInFlight = false;
@@ -704,6 +700,20 @@ function relayRuntimeEvent(payload: Record<string, unknown>): void {
   } else {
     broadcast("session.event", sanitized);
   }
+}
+
+function sendCompatibilityResponse(
+  socket: WebSocket,
+  requestID: string | undefined,
+  payload: Record<string, unknown>,
+): void {
+  // Builds prior to 4445562 registered request correlation immediately after
+  // `send` returned. Keep a short host-side grace period while those personal
+  // device builds are upgraded; the current app registers before sending.
+  setTimeout(() => {
+    if (socket.readyState !== WebSocket.OPEN) return;
+    socket.send(JSON.stringify(envelope("session.response", payload, requestID, ++sequence)));
+  }, 150).unref();
 }
 
 function broadcastEphemeral(type: string, payload: unknown): void {
