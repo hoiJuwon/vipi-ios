@@ -248,7 +248,7 @@ export class CodexProvider {
     }
     if (status === "offline") throw new Error("Codex is unavailable");
     if (this.threadLoadState.get(sessionID) === "notLoaded") {
-      await this.client.request("thread/resume", { threadId: threadID }, 20_000);
+      await this.client.request("thread/resume", { threadId: threadID }, 120_000);
       this.threadLoadState.set(sessionID, "idle");
     }
     await this.client.request("turn/start", {
