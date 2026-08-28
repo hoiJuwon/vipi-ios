@@ -58,6 +58,7 @@ struct RootView: View {
     }
 
     @Environment(AppStore.self) private var store
+    @Environment(\.scenePhase) private var scenePhase
     @State private var path: [Route] = []
 
     var body: some View {
@@ -83,8 +84,12 @@ struct RootView: View {
             }
         }
         .animation(.snappy, value: store.pendingInteractions.first?.requestID)
-        .onChange(of: store.requestedNotificationSessionID) { _, _ in openNotificationSessionIfAvailable() }
+        .onAppear { openNotificationSessionIfAvailable() }
+        .onChange(of: store.notificationRouteRequest) { _, _ in openNotificationSessionIfAvailable() }
         .onChange(of: store.sessions.map(\.id)) { _, _ in openNotificationSessionIfAvailable() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { openNotificationSessionIfAvailable() }
+        }
     }
 
     private var navigation: some View {
@@ -106,7 +111,11 @@ struct RootView: View {
     private func openNotificationSessionIfAvailable() {
         guard let sessionID = store.requestedNotificationSessionID,
               store.session(id: sessionID) != nil else { return }
+        if let session = store.session(id: sessionID), session.agentProvider != store.selectedProvider {
+            store.selectProvider(session.agentProvider)
+        }
         path = [.session(sessionID)]
         store.consumeNotificationSessionRequest()
+        PushNotificationCoordinator.clearPendingSessionID(sessionID)
     }
 }

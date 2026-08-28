@@ -25,6 +25,7 @@ struct PushDeviceRegistration: Codable, Equatable {
     let environment: String
 }
 
+@MainActor
 enum PushNotificationCoordinator {
     private static let registrationKey = "vipi.apnsRegistration"
     private static let pendingSessionKey = "vipi.pendingPushSession"
@@ -81,10 +82,13 @@ enum PushNotificationCoordinator {
         NotificationCenter.default.post(name: .vipiOpenSession, object: sessionID)
     }
 
-    static func consumePendingSessionID() -> String? {
-        let value = UserDefaults.standard.string(forKey: pendingSessionKey)
+    static func pendingSessionID() -> String? {
+        UserDefaults.standard.string(forKey: pendingSessionKey)
+    }
+
+    static func clearPendingSessionID(_ sessionID: String) {
+        guard UserDefaults.standard.string(forKey: pendingSessionKey) == sessionID else { return }
         UserDefaults.standard.removeObject(forKey: pendingSessionKey)
-        return value
     }
 }
 
@@ -118,7 +122,7 @@ final class VipiAppDelegate: NSObject, UIApplicationDelegate, UNUserNotification
         didReceive response: UNNotificationResponse
     ) async {
         if let sessionID = response.notification.request.content.userInfo["sessionID"] as? String {
-            PushNotificationCoordinator.open(sessionID: sessionID)
+            await PushNotificationCoordinator.open(sessionID: sessionID)
         }
     }
 }
@@ -165,6 +169,14 @@ struct VipiApp: App {
             .persistentSystemOverlays(showsSplash ? .hidden : .automatic)
             .task { await store.connectIfConfigured() }
             .task {
+                #if DEBUG
+                if let flag = CommandLine.arguments.firstIndex(of: "--notification-session"),
+                   CommandLine.arguments.indices.contains(flag + 1) {
+                    store.requestSessionFromNotification(CommandLine.arguments[flag + 1])
+                }
+                #endif
+            }
+            .task {
                 guard !CommandLine.arguments.contains("--uitesting") else { return }
                 if CommandLine.arguments.contains("--request-notifications") {
                     _ = await PushNotificationCoordinator.requestAuthorization()
@@ -172,7 +184,7 @@ struct VipiApp: App {
                     _ = await PushNotificationCoordinator.prepare()
                 }
                 await store.registerPushDeviceIfAvailable()
-                if let sessionID = PushNotificationCoordinator.consumePendingSessionID() {
+                if let sessionID = PushNotificationCoordinator.pendingSessionID() {
                     store.requestSessionFromNotification(sessionID)
                 }
             }

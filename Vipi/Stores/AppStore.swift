@@ -36,6 +36,7 @@ final class AppStore {
     var pushRegisteredDevices = 0
     var pushRegistrationError: String?
     var requestedNotificationSessionID: String?
+    var notificationRouteRequest = 0
 
     private let broker: BrokerClient
     private let allowsInsecureLocalhostForUITesting: Bool
@@ -540,6 +541,7 @@ final class AppStore {
 
     func requestSessionFromNotification(_ sessionID: String) {
         requestedNotificationSessionID = sessionID
+        notificationRouteRequest &+= 1
     }
 
     func consumeNotificationSessionRequest() {

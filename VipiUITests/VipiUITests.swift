@@ -20,7 +20,15 @@ final class VipiUITests: XCTestCase {
         if name.contains("LiveHost") {
             app.launchEnvironment["VIPI_E2E_PAIRING"] = #"{"host":"http://127.0.0.1:9876","token":"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ"}"#
         }
+        if name.contains("NotificationTap") {
+            app.launchArguments += ["--notification-session", "mobile"]
+        }
         app.launch()
+    }
+
+    func testNotificationTapRoutesToRequestedSessionOnColdLaunch() {
+        XCTAssertTrue(app.navigationBars["모바일 세션 앱"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.textFields["chat.composer"].waitForExistence(timeout: 3))
     }
 
     func testSplashPreviewShowsCodeWordmark() {

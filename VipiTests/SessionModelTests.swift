@@ -109,9 +109,12 @@ final class SessionModelTests: XCTestCase {
 
     func testNotificationSessionRequestPersistsUntilNavigationConsumesIt() async {
         let store = await AppStore(startsInDemoMode: true)
+        let initialRouteRequest = await store.notificationRouteRequest
         await store.requestSessionFromNotification("mobile")
         let requested = await store.requestedNotificationSessionID
+        let routeRequest = await store.notificationRouteRequest
         XCTAssertEqual(requested, "mobile")
+        XCTAssertEqual(routeRequest, initialRouteRequest + 1)
         await store.consumeNotificationSessionRequest()
         let consumed = await store.requestedNotificationSessionID
         XCTAssertNil(consumed)
