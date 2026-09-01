@@ -33,12 +33,24 @@ export function readSessionEntryPage(
       if (line.trim()) {
         try {
           const value = JSON.parse(line) as Record<string, unknown>;
-          if (typeof value.id === "string") indexed.push({ entry: value as SessionEntry, offset: startOffset + lineStart });
+          const message = value.message && typeof value.message === "object" ? value.message as Record<string, unknown> : undefined;
+          const role = message?.role;
+          const visibleMessage = role === "user" || (role === "assistant" && message?.stopReason !== "toolUse");
+          if (typeof value.id === "string" && value.type === "message" && visibleMessage) {
+            indexed.push({ entry: value as SessionEntry, offset: startOffset + lineStart });
+          }
         } catch {}
       }
       lineStart = cursor + 1;
     }
-    const selected = indexed.slice(-Math.min(120, Math.max(20, options.limit ?? 60)));
+    const entryLimit = Math.min(120, Math.max(20, options.limit ?? 60));
+    const selected = indexed.slice(-entryLimit);
+    if (selected.length < Math.min(20, entryLimit) && startOffset > 0 && byteBudget < 64 * 1024 * 1024) {
+      return readSessionEntryPage(sessionFile, {
+        ...options,
+        byteBudget: Math.min(64 * 1024 * 1024, byteBudget * 2),
+      });
+    }
     const cursorOffset = selected[0]?.offset ?? startOffset;
     return {
       entries: selected.map((value) => value.entry),
