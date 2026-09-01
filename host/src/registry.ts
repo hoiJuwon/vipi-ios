@@ -67,7 +67,10 @@ export function readTmuxRegistry(): SessionRecord[] {
   try {
     const body = JSON.parse(readFileSync(registryPath, "utf8")) as { entries?: RawEntry[] };
     return (body.entries ?? []).flatMap((entry): SessionRecord[] => {
-      if (!entry.piSessionId || !entry.cwd || !entry.sessionFile || !existsSync(entry.sessionFile)) return [];
+      // Scheduler/headless runs use synthetic `session:<id>` coordinates.
+      // Mobile exposes only user-owned tmux panes and fetches their latest
+      // state when the app connects; headless runs must never stream or push.
+      if (!entry.piSessionId || !entry.cwd || !entry.sessionFile || !entry.tmuxPaneId?.startsWith("%") || !existsSync(entry.sessionFile)) return [];
       const recent = recentMessageSnapshot(entry.sessionFile);
       return [{
         id: entry.piSessionId,

@@ -35,6 +35,8 @@ const runtimes = new Map<string, WebSocket>();
 const runtimePanes = new Map<string, string>();
 const runtimeCapabilities = new Map<string, { imageAttachments: boolean; goalCommands: boolean }>();
 const liveSessions = new Map<string, SessionRecord>();
+let visiblePiSessionIDs = new Set<string>();
+let lastBroadcastSessionsFingerprint = "";
 const pendingRequests = new Map<string, WebSocket>();
 const pendingAssistantEvents = new Map<string, Record<string, unknown>>();
 const pendingInteractions = new Map<string, string>();
@@ -50,7 +52,7 @@ mkdirSync(attachmentDirectory, { recursive: true, mode: 0o700 });
 
 const codex = new CodexProvider({
   onStateChange: () => broadcastEphemeral("providers.snapshot", providerSnapshot()),
-  onSessionsChanged: () => broadcast("sessions.snapshot", { sessions: mergedSessions() }),
+  onSessionsChanged: () => broadcastSessionsIfChanged(),
   onEvent: (sessionID, event) => broadcast("session.event", { sessionID, event }),
   onCompleted: (sessionID, sessionName) => {
     void sendSessionCompletedPush({ id: sessionID, name: sessionName });
@@ -217,9 +219,11 @@ wss.on("connection", (socket) => {
           imageAttachments: capabilities?.imageAttachments === true,
           goalCommands: capabilities?.goalCommands === true,
         });
-        liveSessions.set(session.id, session);
-        clearTimeout(authTimer); broadcast("sessions.snapshot", { sessions: mergedSessions() });
-        socket.send(JSON.stringify(envelope("runtime.mobilePresence", { connected: mobileClients.size > 0 }, undefined, ++sequence)));
+        if (registered?.tmux.paneID.startsWith("%") || process.env.VIPI_ALLOW_HEADLESS_RUNTIME === "1") liveSessions.set(session.id, session);
+        clearTimeout(authTimer); broadcastSessionsIfChanged();
+        socket.send(JSON.stringify(envelope("runtime.mobilePresence", {
+          connected: mobileClients.size > 0 && (Boolean(registered?.tmux.paneID.startsWith("%")) || process.env.VIPI_ALLOW_HEADLESS_RUNTIME === "1"),
+        }, undefined, ++sequence)));
         return;
       }
       socket.close(4001, "unauthorized"); return;
@@ -231,7 +235,7 @@ wss.on("connection", (socket) => {
         const kind = typeof message.payload.kind === "string" && ["confirm", "select", "input"].includes(message.payload.kind)
           ? message.payload.kind : undefined;
         if (!requestID || !runtimeSessionID || !kind) return;
-        if (mobileClients.size === 0) {
+        if (mobileClients.size === 0 || !isRuntimeMobileVisible(runtimeSessionID)) {
           socket.send(JSON.stringify(envelope("runtime.mobilePresence", { connected: false }, undefined, ++sequence)));
           return;
         }
@@ -250,16 +254,17 @@ wss.on("connection", (socket) => {
         broadcastEphemeral("session.interaction", interaction);
       } else if (message.type === "runtime.session") {
         const session = message.payload.session as unknown as SessionRecord;
-        const previousPhase = session?.id ? liveSessions.get(session.id)?.phase : undefined;
-        if (session?.id) {
+        if (!session?.id || !isRuntimeMobileVisible(session.id)) return;
+        const previousPhase = liveSessions.get(session.id)?.phase;
+        if (session.id) {
           liveSessions.set(session.id, session);
           if (session.phase === "working" && previousPhase !== "working") pendingAssistantEvents.delete(session.id);
           if (previousPhase === "working" && session.phase === "completed") {
-            const treeSession = readTmuxRegistry().find((candidate) => candidate.id === session.id);
-            void sendSessionCompletedPush({ id: session.id, name: treeSession?.name ?? session.name }).catch(() => {});
+            const treeSession = readTmuxRegistry().find((candidate) => candidate.id === session.id && candidate.tmux.paneID.startsWith("%"));
+            if (treeSession) void sendSessionCompletedPush({ id: session.id, name: treeSession.name }).catch(() => {});
           }
         }
-        broadcast("sessions.snapshot", { sessions: mergedSessions() });
+        broadcastSessionsIfChanged();
         if (session?.id && session.phase !== "working") {
           const pending = pendingAssistantEvents.get(session.id);
           if (pending) {
@@ -279,8 +284,8 @@ wss.on("connection", (socket) => {
           requestAttachments.delete(requestID);
         }
       } else if (message.type === "runtime.event") {
-        relayRuntimeEvent(message.payload);
-      } else if (message.type.startsWith("runtime.")) {
+        if (runtimeSessionID && isRuntimeMobileVisible(runtimeSessionID)) relayRuntimeEvent(message.payload);
+      } else if (message.type.startsWith("runtime.") && runtimeSessionID && isRuntimeMobileVisible(runtimeSessionID)) {
         broadcast(message.type.replace("runtime.", "session."), message.payload);
       }
       return;
@@ -361,7 +366,7 @@ wss.on("connection", (socket) => {
           sendCompatibilityResponse(socket, message.id, {
             requestID: message.id, ok: true, result,
           });
-          broadcast("sessions.snapshot", { sessions: mergedSessions() });
+          broadcastSessionsIfChanged();
         })
         .catch((error) => {
           sendCompatibilityResponse(socket, message.id, {
@@ -420,7 +425,7 @@ wss.on("connection", (socket) => {
       if (ok && typeof sessionID === "string") {
         const runtime = currentRuntime(sessionID);
         if (runtime?.readyState === WebSocket.OPEN) runtime.send(JSON.stringify(message));
-        broadcast("sessions.snapshot", { sessions: mergedSessions() });
+        broadcastSessionsIfChanged();
       }
       return;
     }
@@ -526,7 +531,7 @@ wss.on("connection", (socket) => {
       }
       const session = liveSessions.get(runtimeSessionID);
       if (session) liveSessions.set(runtimeSessionID, { ...session, phase: "offline" });
-      broadcast("sessions.snapshot", { sessions: mergedSessions() });
+      broadcastSessionsIfChanged();
     }
   });
 });
@@ -598,6 +603,10 @@ async function handleCodexCommand(
   }
 }
 
+function isRuntimeMobileVisible(sessionID: string): boolean {
+  return process.env.VIPI_ALLOW_HEADLESS_RUNTIME === "1" || visiblePiSessionIDs.has(sessionID);
+}
+
 function currentRuntime(sessionID: string, registeredSession?: SessionRecord): WebSocket | undefined {
   const runtime = runtimes.get(sessionID);
   if (!runtime || runtime.readyState !== WebSocket.OPEN) return undefined;
@@ -617,6 +626,7 @@ function mergedSessions(): SessionRecord[] {
   const treeSessions = readTmuxRegistry();
   lastTreeFingerprint = JSON.stringify(treeSessions);
   const visibleIDs = new Set(treeSessions.map((session) => session.id));
+  visiblePiSessionIDs = visibleIDs;
   for (const id of liveSessions.keys()) if (!visibleIDs.has(id)) liveSessions.delete(id);
 
   const piSessions = treeSessions.map((treeSession): SessionRecord => {
@@ -637,6 +647,14 @@ function mergedSessions(): SessionRecord[] {
   return [...piSessions, ...codex.sessions()].sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt));
 }
 
+function broadcastSessionsIfChanged(): void {
+  const sessions = mergedSessions();
+  const fingerprint = JSON.stringify(sessions);
+  if (fingerprint === lastBroadcastSessionsFingerprint) return;
+  lastBroadcastSessionsFingerprint = fingerprint;
+  broadcast("sessions.snapshot", { sessions });
+}
+
 function providerSnapshot(): { providers: Array<{ id: "pi" | "codex"; state: string; detail?: string }> } {
   return {
     providers: [
@@ -655,7 +673,7 @@ setInterval(() => {
   const next = treeFingerprint();
   if (next === lastTreeFingerprint) return;
   lastTreeFingerprint = next;
-  broadcast("sessions.snapshot", { sessions: mergedSessions() });
+  broadcastSessionsIfChanged();
 }, 250).unref();
 
 setInterval(() => {
@@ -745,8 +763,12 @@ function notifyRuntimeMobilePresence(): void {
     }
     pendingInteractions.clear();
   }
-  const data = JSON.stringify(envelope("runtime.mobilePresence", { connected }, undefined, ++sequence));
-  for (const runtime of runtimes.values()) if (runtime.readyState === WebSocket.OPEN) runtime.send(data);
+  for (const [sessionID, runtime] of runtimes) {
+    if (runtime.readyState !== WebSocket.OPEN) continue;
+    runtime.send(JSON.stringify(envelope("runtime.mobilePresence", {
+      connected: connected && isRuntimeMobileVisible(sessionID),
+    }, undefined, ++sequence)));
+  }
 }
 
 function broadcast(type: string, payload: unknown): void {

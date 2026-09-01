@@ -97,6 +97,7 @@ before(async () => {
       VIPI_TMUX_EXECUTABLE: fakeTmux,
       VIPI_PI_EXECUTABLE: fakePi,
       VIPI_CODEX_ENABLED: "0",
+      VIPI_ALLOW_HEADLESS_RUNTIME: "1",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -443,6 +444,10 @@ test("uses the session tree as the exact visibility boundary and derives missing
   writeFileSync(registryPath, JSON.stringify({ entries: [{
     piSessionId: "visible-session", name: "Visible", cwd: "/tmp/visible",
     status: "idle", unread: true, tmuxSession: "visible", tmuxWindow: "1", tmuxPaneId: "%new",
+    lastSeen: new Date().toISOString(), sessionFile,
+  }, {
+    piSessionId: "scheduled-session", name: "Scheduled", cwd: "/tmp/visible",
+    status: "idle", unread: false, tmuxSession: "", tmuxWindow: "", tmuxPaneId: "session:scheduled-session",
     lastSeen: new Date().toISOString(), sessionFile,
   }] }));
 
