@@ -182,6 +182,7 @@ struct VipiApp: App {
                 #if DEBUG
                 if let flag = CommandLine.arguments.firstIndex(of: "--notification-session"),
                    CommandLine.arguments.indices.contains(flag + 1) {
+                    store.commandError = "Stale command error from before notification navigation"
                     store.requestSessionFromNotification(CommandLine.arguments[flag + 1])
                 }
                 #endif

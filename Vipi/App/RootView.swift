@@ -114,6 +114,10 @@ struct RootView: View {
         if let session = store.session(id: sessionID), session.agentProvider != store.selectedProvider {
             store.selectProvider(session.agentProvider)
         }
+        // A notification is navigation, not a retry of an older command. Do
+        // not let a stale global transport error present as soon as ChatView
+        // appears and make a successful notification tap look like a failure.
+        store.commandError = nil
         path = [.session(sessionID)]
         store.consumeNotificationSessionRequest()
         PushNotificationCoordinator.clearPendingSessionID(sessionID)

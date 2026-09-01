@@ -29,6 +29,7 @@ final class VipiUITests: XCTestCase {
     func testNotificationTapRoutesToRequestedSessionOnColdLaunch() {
         XCTAssertTrue(app.navigationBars["모바일 세션 앱"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.textFields["chat.composer"].waitForExistence(timeout: 3))
+        XCTAssertFalse(app.alerts["Command failed"].exists)
     }
 
     func testSplashPreviewShowsCodeWordmark() {
