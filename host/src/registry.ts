@@ -1,8 +1,7 @@
-import { existsSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, openSync, readFileSync, readSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { normalizeHistory } from "./normalization.js";
 import type { SessionRecord } from "./protocol.js";
-import { readSessionBranch } from "./session-history.js";
 import { agentDir } from "./token.js";
 
 type RawEntry = {
@@ -15,6 +14,28 @@ type PreviewSnapshot = { fingerprint: string; preview?: string; timestamp?: stri
 const previews = new Map<string, PreviewSnapshot>();
 const registryPath = join(agentDir, "tmux-session-tree.json");
 
+function recentTailEntries(sessionFile: string, size: number): Array<Record<string, unknown>> {
+  const budget = Math.min(size, 512 * 1024);
+  if (budget <= 0) return [];
+  const descriptor = openSync(sessionFile, "r");
+  try {
+    const buffer = Buffer.allocUnsafe(budget);
+    readSync(descriptor, buffer, 0, budget, size - budget);
+    const text = buffer.toString("utf8");
+    const lines = text.split("\n");
+    if (size > budget) lines.shift();
+    return lines.flatMap((line): Array<Record<string, unknown>> => {
+      if (!line.trim()) return [];
+      try {
+        const value = JSON.parse(line) as Record<string, unknown>;
+        return typeof value.id === "string" ? [value] : [];
+      } catch { return []; }
+    });
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
 function recentMessageSnapshot(sessionFile: string | undefined): Omit<PreviewSnapshot, "fingerprint"> {
   if (!sessionFile) return {};
   try {
@@ -22,7 +43,10 @@ function recentMessageSnapshot(sessionFile: string | undefined): Omit<PreviewSna
     const fingerprint = `${metadata.size}:${metadata.mtimeMs}`;
     const cached = previews.get(sessionFile);
     if (cached?.fingerprint === fingerprint) return cached;
-    const event = normalizeHistory(readSessionBranch(sessionFile)).events.findLast((candidate) => candidate.kind === "message");
+    // Session-list rendering must never parse an entire rollout. The live
+    // runtime supplies the freshest preview; cold start reads only a bounded
+    // tail for an offline fallback.
+    const event = normalizeHistory(recentTailEntries(sessionFile, metadata.size)).events.findLast((candidate) => candidate.kind === "message");
     const snapshot: PreviewSnapshot = {
       fingerprint,
       ...(event?.kind === "message" ? {

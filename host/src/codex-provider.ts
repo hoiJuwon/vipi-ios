@@ -38,6 +38,12 @@ interface CodexProviderCallbacks {
 }
 
 type PendingApproval = { rpcID: string | number; method: string; threadID: string; params: JsonObject };
+type CodexHistoryPage = {
+  events: NormalizedEvent[];
+  lastEntryID: string;
+  oldestEntryID?: string;
+  hasMore: boolean;
+};
 
 const CODEX_PREFIX = "codex:";
 const CURSOR_PREFIX = "codex-cursor:";
@@ -165,6 +171,7 @@ export class CodexProvider {
   private readonly unread = new Set<string>();
   private readonly activeTurns = new Map<string, string>();
   private readonly pendingApprovals = new Map<string, PendingApproval>();
+  private readonly historyPages = new Map<string, CodexHistoryPage>();
   private refreshTimer?: NodeJS.Timeout;
   private refreshQueued = false;
   private sessionsFingerprint = "";
@@ -223,15 +230,14 @@ export class CodexProvider {
     }
   }
 
-  async history(sessionID: string, options: { beforeEntryID?: string; limit?: number }): Promise<{
-    events: NormalizedEvent[];
-    lastEntryID: string;
-    oldestEntryID?: string;
-    hasMore: boolean;
-  }> {
+  async history(sessionID: string, options: { beforeEntryID?: string; limit?: number }): Promise<CodexHistoryPage> {
     const threadID = this.threadID(sessionID);
     const cursor = options.beforeEntryID?.startsWith(CURSOR_PREFIX)
       ? options.beforeEntryID.slice(CURSOR_PREFIX.length) : undefined;
+    const session = this.sessionRecords.get(sessionID);
+    const cacheKey = `${sessionID}:${cursor ?? "latest"}:${session?.lastActivityAt ?? "unknown"}`;
+    const cached = this.historyPages.get(cacheKey);
+    if (cached) return cached;
     const result = await this.client.request<{ data?: unknown[]; nextCursor?: string | null }>("thread/turns/list", {
       threadId: threadID,
       // Keep each local daemon response bounded. `summary` retains user and
@@ -243,13 +249,15 @@ export class CodexProvider {
       ...(cursor ? { cursor } : {}),
     }, 20_000);
     const events = normalizeCodexTurns(result.data);
-    const session = this.sessionRecords.get(sessionID);
-    return {
+    const page: CodexHistoryPage = {
       events,
       lastEntryID: `codex-update:${session?.lastActivityAt ?? Date.now()}`,
       ...(result.nextCursor ? { oldestEntryID: `${CURSOR_PREFIX}${result.nextCursor}` } : {}),
       hasMore: Boolean(result.nextCursor),
     };
+    this.historyPages.set(cacheKey, page);
+    while (this.historyPages.size > 80) this.historyPages.delete(this.historyPages.keys().next().value!);
+    return page;
   }
 
   async create(cwd: string): Promise<{ cwd: string; paneID: string; sessionID: string }> {
@@ -354,6 +362,11 @@ export class CodexProvider {
       ? params.threadId
       : object(params.thread)?.threadId as string | undefined;
     const sessionID = threadID ? `${CODEX_PREFIX}${threadID}` : undefined;
+    if (sessionID && (method.startsWith("turn/") || method.startsWith("item/"))) {
+      for (const key of this.historyPages.keys()) {
+        if (key.startsWith(`${sessionID}:`)) this.historyPages.delete(key);
+      }
+    }
 
     if (method === "turn/started") {
       const turn = object(params.turn);

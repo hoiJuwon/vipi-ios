@@ -9,7 +9,7 @@ import { loadOrCreateToken, rotateToken, tokenMatches, tokenPath } from "./token
 import { readTmuxRegistry, setTmuxSessionUnread } from "./registry.js";
 import { createPairingPayload } from "./pairing.js";
 import { mobileActivityForTool, normalizeHistory } from "./normalization.js";
-import { readSessionBranch } from "./session-history.js";
+import { readSessionBranch, readSessionEntryPage } from "./session-history.js";
 import { browseWorkspace, launchSession, listWorkspaces } from "./workspaces.js";
 import { pushStatus, registerPushDevice, sendSessionCompletedPush, unregisterPushDevice } from "./push.js";
 import { CodexProvider } from "./codex-provider.js";
@@ -435,11 +435,24 @@ wss.on("connection", (socket) => {
       const session = mergedSessions().find((candidate) => candidate.id === sessionID);
       if (session?.sessionFile) {
         try {
-          const result = normalizeHistory(readSessionBranch(session.sessionFile), {
-            afterEntryID: typeof message.payload?.afterEntryID === "string" ? message.payload.afterEntryID : undefined,
-            beforeEntryID: typeof message.payload?.beforeEntryID === "string" ? message.payload.beforeEntryID : undefined,
-            limit: typeof message.payload?.limit === "number" ? message.payload.limit : undefined,
+          const afterEntryID = typeof message.payload?.afterEntryID === "string" ? message.payload.afterEntryID : undefined;
+          const beforeEntryID = typeof message.payload?.beforeEntryID === "string" ? message.payload.beforeEntryID : undefined;
+          const limit = typeof message.payload?.limit === "number" ? message.payload.limit : undefined;
+          const offset = beforeEntryID?.startsWith("pi-offset:")
+            ? Number(beforeEntryID.slice("pi-offset:".length)) : undefined;
+          const page = Number.isFinite(offset)
+            ? readSessionEntryPage(session.sessionFile, { endOffset: offset, limit })
+            : beforeEntryID
+              ? { entries: readSessionBranch(session.sessionFile), cursorOffset: 0, hasMore: false }
+              : readSessionEntryPage(session.sessionFile, { limit });
+          const result = normalizeHistory(page.entries, {
+            afterEntryID,
+            limit,
           });
+          if (!afterEntryID) {
+            result.oldestEntryID = `pi-offset:${page.cursorOffset}`;
+            result.hasMore = page.hasMore;
+          }
           socket.send(JSON.stringify(envelope("session.response", { requestID: message.id, ok: true, result }, message.id, ++sequence)));
           return;
         } catch {
@@ -582,10 +595,10 @@ async function handleCodexCommand(
   }
 }
 
-function currentRuntime(sessionID: string): WebSocket | undefined {
+function currentRuntime(sessionID: string, registeredSession?: SessionRecord): WebSocket | undefined {
   const runtime = runtimes.get(sessionID);
   if (!runtime || runtime.readyState !== WebSocket.OPEN) return undefined;
-  const registered = readTmuxRegistry().find((candidate) => candidate.id === sessionID);
+  const registered = registeredSession ?? readTmuxRegistry().find((candidate) => candidate.id === sessionID);
   const runtimePane = runtimePanes.get(sessionID);
   if (registered && runtimePane && registered.tmux.paneID !== runtimePane) {
     runtimes.delete(sessionID);
@@ -604,7 +617,7 @@ function mergedSessions(): SessionRecord[] {
   for (const id of liveSessions.keys()) if (!visibleIDs.has(id)) liveSessions.delete(id);
 
   const piSessions = treeSessions.map((treeSession): SessionRecord => {
-    const live = currentRuntime(treeSession.id) ? liveSessions.get(treeSession.id) : undefined;
+    const live = currentRuntime(treeSession.id, treeSession) ? liveSessions.get(treeSession.id) : undefined;
     if (!live) return { ...treeSession, provider: "pi", phase: "offline" };
     return {
       ...treeSession,

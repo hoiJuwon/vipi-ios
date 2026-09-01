@@ -251,7 +251,7 @@ final class SessionModelTests: XCTestCase {
     }
 
     @MainActor func testProductionStoreStartsEmptyAndDisconnected() {
-        let store = AppStore()
+        let store = AppStore(restoresLocalCache: false)
         XCTAssertTrue(store.sessions.isEmpty)
         XCTAssertTrue(store.messagesBySession.isEmpty)
         XCTAssertEqual(store.connectionState, .disconnected(nil))

@@ -10,7 +10,7 @@ import { after, before, test } from "node:test";
 import WebSocket from "ws";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { normalizeHistory, normalizeMessage, normalizeToolEvent } from "../src/normalization.js";
-import { readSessionBranch } from "../src/session-history.js";
+import { readSessionBranch, readSessionEntryPage } from "../src/session-history.js";
 import { createPairingPayload } from "../src/pairing.js";
 import { normalizeCodexThread, normalizeCodexTurns } from "../src/codex-provider.js";
 
@@ -322,6 +322,19 @@ test("reads the active JSONL branch without becoming a writer", () => {
     "{partial",
   ].join("\n"));
   assert.deepEqual(readSessionBranch(file).map((entry) => entry.id), ["root", "active"]);
+
+  const pagedFile = join(directory, "paged.jsonl");
+  writeFileSync(pagedFile, Array.from({ length: 80 }, (_, index) => JSON.stringify({
+    id: `page-${index}`, parentId: index ? `page-${index - 1}` : null,
+    type: "message", message: { role: "user", content: `message ${index}`, timestamp: index },
+  })).join("\n"));
+  const latest = readSessionEntryPage(pagedFile, { limit: 20, byteBudget: 4_000 });
+  assert.equal(latest.entries.at(-1)?.id, "page-79");
+  assert.equal(latest.entries.length, 20);
+  assert.equal(latest.hasMore, true);
+  const previous = readSessionEntryPage(pagedFile, { endOffset: latest.cursorOffset, limit: 20, byteBudget: 1_200 });
+  assert.ok(previous.entries.length > 0);
+  assert.ok(previous.entries.every((entry) => !latest.entries.some((newer) => newer.id === entry.id)));
 });
 
 test("replays missed normalized runtime events from a sequence cursor", async () => {

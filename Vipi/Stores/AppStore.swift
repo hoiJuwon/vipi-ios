@@ -50,11 +50,13 @@ final class AppStore {
     private var latestWorkspaceBrowseRequestID: String?
     private var startingSessionPaneID: String?
     private var pendingPushRequests: Set<String> = []
+    private var cacheSaveTask: Task<Void, Never>?
 
     init(
         broker: BrokerClient = BrokerClient(),
         allowsInsecureLocalhostForUITesting: Bool = false,
-        startsInDemoMode: Bool = false
+        startsInDemoMode: Bool = false,
+        restoresLocalCache: Bool = true
     ) {
         self.broker = broker
         self.allowsInsecureLocalhostForUITesting = allowsInsecureLocalhostForUITesting
@@ -80,7 +82,7 @@ final class AppStore {
         if let storedProvider = UserDefaults.standard.string(forKey: "vipi.selectedProvider").flatMap(AgentProvider.init(rawValue:)) {
             selectedProvider = storedProvider
         }
-        if startsInDemoMode { loadDemoData() }
+        if startsInDemoMode { loadDemoData() } else if restoresLocalCache { restoreLocalCache() }
     }
 
     var visibleSessions: [RemoteSession] {
@@ -327,6 +329,7 @@ final class AppStore {
             } else {
                 messagesBySession[sessionID, default: []].append(message)
             }
+            scheduleLocalCacheSave()
             return true
         } catch {
             commandError = "Prompt could not be delivered: \(error.localizedDescription)"
@@ -548,6 +551,57 @@ final class AppStore {
         requestedNotificationSessionID = nil
     }
 
+    private var localCacheURL: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        return base.appending(path: "Vipi", directoryHint: .isDirectory).appending(path: "mobile-cache-v2.json")
+    }
+
+    private func restoreLocalCache() {
+        guard let data = try? Data(contentsOf: localCacheURL),
+              let cache = try? JSONDecoder().decode(PersistedMobileCache.self, from: data),
+              cache.savedAt > Date.now.addingTimeInterval(-30 * 24 * 60 * 60) else { return }
+        sessions = cache.sessions
+        messagesBySession = cache.messagesBySession
+        lastEntryBySession = cache.lastEntryBySession
+        oldestEntryBySession = cache.oldestEntryBySession
+        historyHasMoreBySession = cache.historyHasMoreBySession
+    }
+
+    private func scheduleLocalCacheSave() {
+        cacheSaveTask?.cancel()
+        cacheSaveTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled else { return }
+            self?.saveLocalCache()
+        }
+    }
+
+    private func saveLocalCache() {
+        let visibleIDs = Set(sessions.map(\.id))
+        let messages = messagesBySession.reduce(into: [String: [ChatMessage]]()) { result, pair in
+            guard visibleIDs.contains(pair.key) else { return }
+            result[pair.key] = Array(pair.value.suffix(50))
+        }
+        let cache = PersistedMobileCache(
+            savedAt: .now,
+            sessions: sessions,
+            messagesBySession: messages,
+            lastEntryBySession: lastEntryBySession.filter { visibleIDs.contains($0.key) },
+            oldestEntryBySession: oldestEntryBySession.filter { visibleIDs.contains($0.key) },
+            historyHasMoreBySession: historyHasMoreBySession.filter { visibleIDs.contains($0.key) }
+        )
+        guard let data = try? JSONEncoder().encode(cache) else { return }
+        do {
+            try FileManager.default.createDirectory(
+                at: localCacheURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true,
+                attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication]
+            )
+            try data.write(to: localCacheURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: localCacheURL.path)
+        } catch {}
+    }
+
     private func demoWorkspaceDirectory(at path: String) -> WorkspaceDirectoryListing {
         let known = Set(sessions.map(\.cwd) + [
             "/Users/choijuwon/Desktop",
@@ -618,6 +672,7 @@ final class AppStore {
             if let oldestEntryID = result.oldestEntryID { oldestEntryBySession[sessionID] = oldestEntryID }
             historyHasMoreBySession[sessionID] = result.hasMore ?? false
         }
+        scheduleLocalCacheSave()
     }
 
     private func apply(_ event: NormalizedEvent, to sessionID: String) {
@@ -650,6 +705,7 @@ final class AppStore {
             } else { messages.append(message) }
             messagesBySession[sessionID] = messages
             if message.role == .user { dequeuePrompt(matching: message.text, for: sessionID) }
+            scheduleLocalCacheSave()
             if let timestamp = event.timestamp {
                 lastMessageAtBySession[sessionID] = max(lastMessageAtBySession[sessionID] ?? .distantPast, timestamp)
                 if let index = sessions.firstIndex(where: { $0.id == sessionID }) {
@@ -761,7 +817,6 @@ final class AppStore {
                 applyProviderSnapshot(snapshot)
             }
             UserDefaults.standard.set(host, forKey: "vipi.host")
-            try? KeychainStore.saveToken(token)
             persistSimulatorToken(token)
             await registerPushDeviceIfAvailable()
             return
@@ -811,6 +866,7 @@ final class AppStore {
                     startingSessionPath = nil
                     startingSessionPaneID = nil
                 }
+                scheduleLocalCacheSave()
             } catch {
                 connectionState = .disconnected("Invalid session snapshot")
             }
@@ -960,6 +1016,15 @@ private struct SessionCreateCommandResponse: Decodable {
 private struct SessionCreateResult: Decodable {
     let cwd: String
     let paneID: String
+}
+
+private struct PersistedMobileCache: Codable {
+    let savedAt: Date
+    let sessions: [RemoteSession]
+    let messagesBySession: [String: [ChatMessage]]
+    let lastEntryBySession: [String: String]
+    let oldestEntryBySession: [String: String]
+    let historyHasMoreBySession: [String: Bool]
 }
 
 private struct SessionSnapshot: Decodable {
