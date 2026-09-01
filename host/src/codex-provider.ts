@@ -28,6 +28,7 @@ interface CodexProviderCallbacks {
   onStateChange?: (state: CodexConnectionState, detail?: string) => void;
   onSessionsChanged?: () => void;
   onEvent?: (sessionID: string, event: NormalizedEvent) => void;
+  onCompleted?: (sessionID: string, sessionName: string) => void;
   onInteraction?: (interaction: {
     requestID: string;
     sessionID: string;
@@ -170,6 +171,7 @@ export class CodexProvider {
   private readonly threadHistoryMode = new Map<string, "legacy" | "paginated">();
   private readonly unread = new Set<string>();
   private readonly activeTurns = new Map<string, string>();
+  private readonly vipiOwnedTurns = new Set<string>();
   private readonly pendingApprovals = new Map<string, PendingApproval>();
   private readonly historyPages = new Map<string, CodexHistoryPage>();
   private refreshTimer?: NodeJS.Timeout;
@@ -217,7 +219,9 @@ export class CodexProvider {
     for (const thread of result.data ?? []) {
       if (!thread?.id) continue;
       const id = `${CODEX_PREFIX}${thread.id}`;
-      next.set(id, normalizeCodexThread(thread, this.unread.has(id)));
+      const normalized = normalizeCodexThread(thread, this.unread.has(id));
+      if (this.activeTurns.has(id) || this.vipiOwnedTurns.has(id)) normalized.phase = "working";
+      next.set(id, normalized);
       this.threadLoadState.set(id, thread.status?.type ?? "notLoaded");
       this.threadHistoryMode.set(id, thread.historyMode ?? "legacy");
     }
@@ -299,11 +303,20 @@ export class CodexProvider {
       await this.client.request("thread/resume", { threadId: threadID }, 120_000);
       this.threadLoadState.set(sessionID, "idle");
     }
-    await this.client.request("turn/start", {
-      threadId: threadID,
-      input,
-      ...(typeof payload.clientMessageID === "string" ? { clientUserMessageId: payload.clientMessageID } : {}),
-    });
+    this.vipiOwnedTurns.add(sessionID);
+    try {
+      const result = await this.client.request<{ turn?: { id?: string } }>("turn/start", {
+        threadId: threadID,
+        input,
+        ...(typeof payload.clientMessageID === "string" ? { clientUserMessageId: payload.clientMessageID } : {}),
+      });
+      if (result.turn?.id) this.activeTurns.set(sessionID, result.turn.id);
+      this.threadLoadState.set(sessionID, "active");
+      this.updatePhase(sessionID, "working");
+    } catch (error) {
+      this.vipiOwnedTurns.delete(sessionID);
+      throw error;
+    }
   }
 
   async abort(sessionID: string): Promise<void> {
@@ -353,6 +366,7 @@ export class CodexProvider {
     } else if (this.refreshTimer) {
       clearInterval(this.refreshTimer);
       this.refreshTimer = undefined;
+      this.vipiOwnedTurns.clear();
     }
     this.callbacks.onStateChange?.(state, detail);
   }
@@ -383,15 +397,19 @@ export class CodexProvider {
       if (resolvedThreadID) {
         const resolvedSessionID = `${CODEX_PREFIX}${resolvedThreadID}`;
         this.activeTurns.delete(resolvedSessionID);
+        const ownedByVipi = this.vipiOwnedTurns.delete(resolvedSessionID);
         this.threadLoadState.set(resolvedSessionID, "idle");
         const status = turn?.status === "failed" ? "failed" : "completed";
+        if (status === "completed") this.unread.add(resolvedSessionID);
         this.updatePhase(resolvedSessionID, status);
         const items = Array.isArray(turn?.items) ? turn.items : [];
         const events = normalizeCodexTurns([{ ...turn, items }]);
         for (const event of events.filter((candidate) => candidate.kind === "message" && candidate.role === "assistant")) {
           this.callbacks.onEvent?.(resolvedSessionID, event);
         }
-        this.unread.add(resolvedSessionID);
+        if (status === "completed" && ownedByVipi) {
+          this.callbacks.onCompleted?.(resolvedSessionID, this.sessionRecords.get(resolvedSessionID)?.name ?? "Codex");
+        }
       }
     } else if (method === "item/started" && sessionID) {
       const item = object(params.item);
@@ -404,7 +422,9 @@ export class CodexProvider {
     } else if (method === "thread/status/changed" && sessionID) {
       const status = object(params.status) as CodexThread["status"];
       this.threadLoadState.set(sessionID, status?.type ?? "notLoaded");
-      this.updatePhase(sessionID, statusPhase(status));
+      const phase = (this.activeTurns.has(sessionID) || this.vipiOwnedTurns.has(sessionID)) && status?.type !== "systemError"
+        ? "working" : statusPhase(status);
+      this.updatePhase(sessionID, phase);
     }
 
     if (method.startsWith("thread/") || method.startsWith("turn/")) this.queueRefresh();

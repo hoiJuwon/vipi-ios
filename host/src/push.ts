@@ -176,7 +176,7 @@ export async function sendSessionCompletedPush(session: { id: string; name: stri
     aps: {
       alert: {
         title: session.name || "Vipi",
-        body: "Pi finished responding.",
+        body: "Response complete.",
       },
       sound: "default",
       "thread-id": `session-${session.id}`,

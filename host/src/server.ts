@@ -52,6 +52,9 @@ const codex = new CodexProvider({
   onStateChange: () => broadcastEphemeral("providers.snapshot", providerSnapshot()),
   onSessionsChanged: () => broadcast("sessions.snapshot", { sessions: mergedSessions() }),
   onEvent: (sessionID, event) => broadcast("session.event", { sessionID, event }),
+  onCompleted: (sessionID, sessionName) => {
+    void sendSessionCompletedPush({ id: sessionID, name: sessionName });
+  },
   onInteraction: (interaction) => {
     if (mobileClients.size === 0) {
       codex.respondToInteraction(interaction.requestID, false);
