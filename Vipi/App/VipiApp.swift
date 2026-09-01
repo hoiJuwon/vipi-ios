@@ -119,10 +119,20 @@ final class VipiAppDelegate: NSObject, UIApplicationDelegate, UNUserNotification
 
     nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
-        didReceive response: UNNotificationResponse
-    ) async {
-        if let sessionID = response.notification.request.content.userInfo["sessionID"] as? String {
-            await PushNotificationCoordinator.open(sessionID: sessionID)
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping @Sendable () -> Void
+    ) {
+        guard let sessionID = response.notification.request.content.userInfo["sessionID"] as? String else {
+            completionHandler()
+            return
+        }
+        // UIKit performs notification state restoration when this completion
+        // handler returns. Keep that handoff on the main actor; the async
+        // delegate variant can resume on a cooperative queue and triggers an
+        // iOS 26 UIApplication state-restoration assertion.
+        DispatchQueue.main.async {
+            PushNotificationCoordinator.open(sessionID: sessionID)
+            completionHandler()
         }
     }
 }
