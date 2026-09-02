@@ -14,6 +14,15 @@ type PreviewSnapshot = { fingerprint: string; preview?: string; timestamp?: stri
 const previews = new Map<string, PreviewSnapshot>();
 const registryPath = join(agentDir, "tmux-session-tree.json");
 
+export function tmuxRegistryRevision(): string {
+  try {
+    const metadata = statSync(registryPath);
+    return `${metadata.ino}:${metadata.size}:${metadata.mtimeMs}`;
+  } catch {
+    return "missing";
+  }
+}
+
 function recentTailEntries(sessionFile: string, size: number): Array<Record<string, unknown>> {
   const budget = Math.min(size, 512 * 1024);
   if (budget <= 0) return [];

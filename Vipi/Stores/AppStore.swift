@@ -109,8 +109,8 @@ final class AppStore {
         UserDefaults.standard.set(provider.rawValue, forKey: "vipi.selectedProvider")
     }
     func lastEntryForTesting(sessionID: String) -> String? { lastEntryBySession[sessionID] }
-    func registerHistoryRequestForTesting(id: String, sessionID: String) {
-        pendingHistoryRequests[id] = PendingHistoryRequest(sessionID: sessionID, direction: .initial)
+    func registerHistoryRequestForTesting(id: String, sessionID: String, older: Bool = false) {
+        pendingHistoryRequests[id] = PendingHistoryRequest(sessionID: sessionID, direction: older ? .older : .initial)
         historyRequestsInFlight.insert(sessionID)
     }
     func messages(for id: String) -> [ChatMessage] { messagesBySession[id] ?? [] }
@@ -665,9 +665,40 @@ final class AppStore {
         guard let response: HistoryResponsePayload = decode(payload), response.ok,
               let result = response.result else { return }
         let sessionID = request.sessionID
-        for event in result.events { apply(event, to: sessionID) }
-        messagesBySession[sessionID]?.sort { $0.timestamp < $1.timestamp }
-        if let lastEntryID = result.lastEntryID { lastEntryBySession[sessionID] = lastEntryID }
+        var messages = messagesBySession[sessionID, default: []]
+        var latestMessageAt = lastMessageAtBySession[sessionID]
+
+        // A page is one state transition. Publishing each of up to 60 events
+        // separately caused SwiftUI to repeatedly reorder and redraw the
+        // transcript while a session was opening.
+        for event in result.events {
+            if event.kind == "progress", let activity = event.activity {
+                progressBySession[sessionID] = activity
+            }
+            guard let message = chatMessage(from: event) else { continue }
+            merge(message, replacing: event.replacesMessageID, into: &messages)
+            if message.role == .user { dequeuePrompt(matching: message.text, for: sessionID) }
+            if let timestamp = event.timestamp {
+                latestMessageAt = max(latestMessageAt ?? .distantPast, timestamp)
+            }
+        }
+        messages.sort { lhs, rhs in
+            lhs.timestamp == rhs.timestamp ? lhs.id < rhs.id : lhs.timestamp < rhs.timestamp
+        }
+        messagesBySession[sessionID] = messages
+        if let latestMessageAt {
+            lastMessageAtBySession[sessionID] = latestMessageAt
+            if let index = sessions.firstIndex(where: { $0.id == sessionID }) {
+                sessions[index].lastActivityAt = latestMessageAt
+            }
+        }
+
+        // Loading an older page must not move the incremental tail cursor
+        // backwards. Doing so made the next visit re-fetch and re-merge a
+        // large middle section of the conversation.
+        if request.direction != .older, let lastEntryID = result.lastEntryID {
+            lastEntryBySession[sessionID] = lastEntryID
+        }
         if request.direction != .incremental {
             if let oldestEntryID = result.oldestEntryID { oldestEntryBySession[sessionID] = oldestEntryID }
             historyHasMoreBySession[sessionID] = result.hasMore ?? false
@@ -680,29 +711,9 @@ final class AppStore {
             progressBySession[sessionID] = activity
             return
         }
-        if event.kind == "message", let role = event.role, let text = event.text {
-            let message = ChatMessage(
-                id: event.messageID ?? UUID().uuidString,
-                role: role,
-                text: text,
-                timestamp: event.timestamp ?? .now,
-                isStreaming: event.streaming ?? false,
-                attachments: event.attachments ?? []
-            )
+        if let message = chatMessage(from: event) {
             var messages = messagesBySession[sessionID, default: []]
-            let replacementIndex = event.replacesMessageID.flatMap { replacedID in
-                messages.firstIndex(where: { $0.id == replacedID })
-            }
-            let stableIndex = messages.firstIndex(where: { $0.id == message.id })
-            let semanticIndex = messages.firstIndex(where: {
-                $0.role == message.role && $0.text == message.text &&
-                abs($0.timestamp.timeIntervalSince(message.timestamp)) < 5
-            })
-            if let index = replacementIndex ?? stableIndex ?? semanticIndex {
-                var replacement = message
-                if replacement.attachments.isEmpty { replacement.attachments = messages[index].attachments }
-                messages[index] = replacement
-            } else { messages.append(message) }
+            merge(message, replacing: event.replacesMessageID, into: &messages)
             messagesBySession[sessionID] = messages
             if message.role == .user { dequeuePrompt(matching: message.text, for: sessionID) }
             scheduleLocalCacheSave()
@@ -714,6 +725,34 @@ final class AppStore {
             }
         }
         if let entryID = event.entryID { lastEntryBySession[sessionID] = entryID }
+    }
+
+    private func chatMessage(from event: NormalizedEvent) -> ChatMessage? {
+        guard event.kind == "message", let role = event.role, let text = event.text else { return nil }
+        return ChatMessage(
+            id: event.messageID ?? UUID().uuidString,
+            role: role,
+            text: text,
+            timestamp: event.timestamp ?? .now,
+            isStreaming: event.streaming ?? false,
+            attachments: event.attachments ?? []
+        )
+    }
+
+    private func merge(_ message: ChatMessage, replacing replacedID: String?, into messages: inout [ChatMessage]) {
+        let replacementIndex = replacedID.flatMap { id in messages.firstIndex(where: { $0.id == id }) }
+        let stableIndex = messages.firstIndex(where: { $0.id == message.id })
+        let semanticIndex = messages.firstIndex(where: {
+            $0.role == message.role && $0.text == message.text &&
+            abs($0.timestamp.timeIntervalSince(message.timestamp)) < 5
+        })
+        if let index = replacementIndex ?? stableIndex ?? semanticIndex {
+            var replacement = message
+            if replacement.attachments.isEmpty { replacement.attachments = messages[index].attachments }
+            messages[index] = replacement
+        } else {
+            messages.append(message)
+        }
     }
 
     private func enqueuePrompt(_ text: String, for sessionID: String) {
@@ -902,6 +941,11 @@ final class AppStore {
                 await reduceSessionCreationResponse(payload, requestID: id, request: request)
                 return
             }
+            if let id = envelope.id, let request = pendingHistoryRequests.removeValue(forKey: id) {
+                reduceHistoryResponse(payload, request: request)
+                historyRequestsInFlight.remove(request.sessionID)
+                return
+            }
             if case .object(let response) = payload,
                case .bool(false) = response["ok"] {
                 if case .object(let result) = response["result"],
@@ -910,10 +954,6 @@ final class AppStore {
                 } else {
                     commandError = "The host rejected the command."
                 }
-            }
-            if let id = envelope.id, let request = pendingHistoryRequests.removeValue(forKey: id) {
-                reduceHistoryResponse(payload, request: request)
-                historyRequestsInFlight.remove(request.sessionID)
             }
             return
         }

@@ -301,6 +301,23 @@ final class SessionModelTests: XCTestCase {
         XCTAssertEqual(store.messages(for: "reconcile").first?.id, "entry-2")
         XCTAssertEqual(store.lastEntryForTesting(sessionID: "reconcile"), "entry-2")
 
+        store.registerHistoryRequestForTesting(id: "history-older", sessionID: "reconcile", older: true)
+        let older = try JSONDecoder().decode(
+            ServerEnvelope.self,
+            from: Data(#"{"id":"history-older","type":"session.response","payload":{"requestID":"history-older","ok":true,"result":{"events":[{"kind":"message","messageID":"entry-1","entryID":"entry-1","role":"user","text":"older question","timestamp":"2026-08-23T00:00:00Z","streaming":false}],"lastEntryID":"entry-1","oldestEntryID":"entry-1","hasMore":false}}}"#.utf8)
+        )
+        await store.handle(older)
+        XCTAssertEqual(store.lastEntryForTesting(sessionID: "reconcile"), "entry-2")
+        XCTAssertEqual(store.messages(for: "reconcile").map(\.id), ["entry-1", "entry-2"])
+
+        store.registerHistoryRequestForTesting(id: "history-failed", sessionID: "reconcile")
+        let failedHistory = try JSONDecoder().decode(
+            ServerEnvelope.self,
+            from: Data(#"{"id":"history-failed","type":"session.response","payload":{"requestID":"history-failed","ok":false,"result":{"error":"history unavailable"}}}"#.utf8)
+        )
+        await store.handle(failedHistory)
+        XCTAssertNil(store.commandError)
+
         let reset = try JSONDecoder().decode(
             ServerEnvelope.self,
             from: Data(#"{"type":"sessions.snapshot","payload":{"sessions":[],"replayReset":true}}"#.utf8)
@@ -309,7 +326,7 @@ final class SessionModelTests: XCTestCase {
         XCTAssertNil(store.lastEntryForTesting(sessionID: "reconcile"))
         store.registerHistoryRequestForTesting(id: "history-3", sessionID: "reconcile")
         await store.handle(try history("history-3", replacesTransient: false))
-        XCTAssertEqual(store.messages(for: "reconcile").count, 1)
+        XCTAssertEqual(store.messages(for: "reconcile").count, 2)
         XCTAssertEqual(store.lastEntryForTesting(sessionID: "reconcile"), "entry-2")
     }
 

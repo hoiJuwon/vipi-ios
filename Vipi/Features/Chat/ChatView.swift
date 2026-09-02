@@ -12,6 +12,7 @@ struct ChatView: View {
     @State private var isNavigatingHistory = false
     @State private var pinsSubmittedTurn = false
     @State private var hasPositionedInitialTranscript = false
+    @State private var transcriptPositionTask: Task<Void, Never>?
 
     private var session: RemoteSession? { store.session(id: sessionID) }
     private var isWorking: Bool { session?.phase == .working }
@@ -107,6 +108,8 @@ struct ChatView: View {
             }
         }
         .onDisappear {
+            transcriptPositionTask?.cancel()
+            transcriptPositionTask = nil
             if store.selectedSessionID == sessionID { store.selectedSessionID = nil }
         }
         .alert("Command failed", isPresented: commandErrorPresented) {
@@ -199,6 +202,8 @@ struct ChatView: View {
                     .accessibilityIdentifier("chat.transcript")
                     .onScrollPhaseChange { _, phase in
                         if phase == .interacting {
+                            transcriptPositionTask?.cancel()
+                            transcriptPositionTask = nil
                             userHasScrolledTranscript = true
                             isFollowingLatest = false
                             isNavigatingHistory = false
@@ -312,13 +317,14 @@ struct ChatView: View {
         let target = pinsCurrentTurn ? latestUserMessageID.map(rowID(for:)) : "transcript-bottom"
         guard let target else { return }
         let isInitialPosition = !hasPositionedInitialTranscript
-        Task { @MainActor in
+        transcriptPositionTask?.cancel()
+        transcriptPositionTask = Task { @MainActor in
             // Large Markdown rows can finish layout after the first view pass.
             // Position once without animation, then verify the same anchor
             // after layout settles instead of exposing the transcript top.
             for delay in isInitialPosition ? [0, 80, 240] : [80] {
                 if delay > 0 { try? await Task.sleep(for: .milliseconds(delay)) }
-                guard isFollowingLatest, !userHasScrolledTranscript else { return }
+                guard !Task.isCancelled, isFollowingLatest, !userHasScrolledTranscript else { return }
                 if isInitialPosition {
                     var transaction = Transaction()
                     transaction.disablesAnimations = true
@@ -337,7 +343,9 @@ struct ChatView: View {
                     }
                 }
             }
+            guard !Task.isCancelled else { return }
             hasPositionedInitialTranscript = true
+            transcriptPositionTask = nil
         }
     }
 }

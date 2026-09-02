@@ -6,7 +6,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import qrcode from "qrcode-terminal";
 import { envelope, PROTOCOL_VERSION, type Envelope, type SessionRecord } from "./protocol.js";
 import { loadOrCreateToken, rotateToken, tokenMatches, tokenPath } from "./token.js";
-import { readTmuxRegistry, setTmuxSessionUnread } from "./registry.js";
+import { readTmuxRegistry, setTmuxSessionUnread, tmuxRegistryRevision } from "./registry.js";
 import { createPairingPayload } from "./pairing.js";
 import { mobileActivityForTool, normalizeHistory } from "./normalization.js";
 import { readSessionBranch, readSessionEntryPage } from "./session-history.js";
@@ -256,13 +256,11 @@ wss.on("connection", (socket) => {
         const session = message.payload.session as unknown as SessionRecord;
         if (!session?.id || !isRuntimeMobileVisible(session.id)) return;
         const previousPhase = liveSessions.get(session.id)?.phase;
-        if (session.id) {
-          liveSessions.set(session.id, session);
-          if (session.phase === "working" && previousPhase !== "working") pendingAssistantEvents.delete(session.id);
-          if (previousPhase === "working" && session.phase === "completed") {
-            const treeSession = readTmuxRegistry().find((candidate) => candidate.id === session.id && candidate.tmux.paneID.startsWith("%"));
-            if (treeSession) void sendSessionCompletedPush({ id: session.id, name: treeSession.name }).catch(() => {});
-          }
+        liveSessions.set(session.id, session);
+        if (session.phase === "working" && previousPhase !== "working") pendingAssistantEvents.delete(session.id);
+        if (previousPhase === "working" && session.phase === "completed") {
+          const treeSession = readTmuxRegistry().find((candidate) => candidate.id === session.id && candidate.tmux.paneID.startsWith("%"));
+          if (treeSession) void sendSessionCompletedPush({ id: session.id, name: treeSession.name }).catch(() => {});
         }
         broadcastSessionsIfChanged();
         if (session?.id && session.phase !== "working") {
@@ -624,7 +622,6 @@ function currentRuntime(sessionID: string, registeredSession?: SessionRecord): W
 
 function mergedSessions(): SessionRecord[] {
   const treeSessions = readTmuxRegistry();
-  lastTreeFingerprint = JSON.stringify(treeSessions);
   const visibleIDs = new Set(treeSessions.map((session) => session.id));
   visiblePiSessionIDs = visibleIDs;
   for (const id of liveSessions.keys()) if (!visibleIDs.has(id)) liveSessions.delete(id);
@@ -664,15 +661,11 @@ function providerSnapshot(): { providers: Array<{ id: "pi" | "codex"; state: str
   };
 }
 
-function treeFingerprint(): string {
-  return JSON.stringify(readTmuxRegistry());
-}
-
-let lastTreeFingerprint = treeFingerprint();
+let lastTreeRevision = tmuxRegistryRevision();
 setInterval(() => {
-  const next = treeFingerprint();
-  if (next === lastTreeFingerprint) return;
-  lastTreeFingerprint = next;
+  const next = tmuxRegistryRevision();
+  if (next === lastTreeRevision) return;
+  lastTreeRevision = next;
   broadcastSessionsIfChanged();
 }, 250).unref();
 
