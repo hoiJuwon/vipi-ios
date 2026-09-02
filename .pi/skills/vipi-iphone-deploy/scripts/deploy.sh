@@ -20,14 +20,20 @@ physical_device_id() {
     | head -1
 }
 
+has_connected_iphone() {
+  xcrun devicectl list devices 2>/dev/null | grep -E 'connected[[:space:]]+iPhone' >/dev/null
+}
+
 cd "$ROOT"
 [ "$(git branch --show-current)" = "main" ] || { echo "Deploy only from main" >&2; exit 1; }
 [ -z "$(git status --porcelain)" ] || { echo "Local main is not clean" >&2; exit 1; }
 
 TARGET="local"
 TARGET_REPO="$ROOT"
-DEVICE=$(physical_device_id "$ROOT")
-if [ -n "$DEVICE" ]; then
+DEVICE=""
+if has_connected_iphone; then
+  DEVICE=$(physical_device_id "$ROOT")
+  [ -n "$DEVICE" ] || { echo "A local iPhone is connected but Xcode has no physical destination" >&2; exit 1; }
   echo "Deploying through local iPhone destination $DEVICE"
 else
   TARGET="remote"
