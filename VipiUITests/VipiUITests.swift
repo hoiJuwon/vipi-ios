@@ -214,6 +214,17 @@ final class VipiUITests: XCTestCase {
         abort.tap()
     }
 
+    func testChatOpensAtLatestTurnWithoutShowingTransientAssistantText() {
+        let session = app.buttons["session.mobile"]
+        XCTAssertTrue(scrollToHittable(session))
+        session.tap()
+
+        let latestUser = app.staticTexts["앱의 초안을 실제로 만들어줘."]
+        XCTAssertTrue(latestUser.waitForExistence(timeout: 5))
+        XCTAssertTrue(latestUser.isHittable)
+        XCTAssertFalse(app.staticTexts["현재 앱 셸과 연결 프로토콜을 구성하고 있습니다."].exists)
+    }
+
     func testVoiceOverSemanticsAndNavigation() {
         let connection = app.buttons["connection.status"].firstMatch
         XCTAssertTrue(connection.waitForExistence(timeout: 5))

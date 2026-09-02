@@ -11,15 +11,14 @@ struct ChatView: View {
     @State private var isFollowingLatest = true
     @State private var isNavigatingHistory = false
     @State private var pinsSubmittedTurn = false
+    @State private var hasPositionedInitialTranscript = false
 
     private var session: RemoteSession? { store.session(id: sessionID) }
     private var isWorking: Bool { session?.phase == .working }
 
     private var displayMessages: [ChatMessage] {
-        let messages = store.messages(for: sessionID).filter { $0.role != .system }
-        guard isWorking, let latestUserIndex = messages.lastIndex(where: { $0.role == .user }) else { return messages }
-        return messages.enumerated().compactMap { index, message in
-            index > latestUserIndex && message.role == .assistant ? nil : message
+        store.messages(for: sessionID).filter {
+            $0.role != .system && !($0.role == .assistant && $0.isStreaming)
         }
     }
 
@@ -186,11 +185,16 @@ struct ChatView: View {
                                     .containerRelativeFrame(.vertical) { length, _ in max(0, length * 0.55) }
                                     .accessibilityHidden(true)
                             }
+                            Color.clear
+                                .frame(height: 1)
+                                .id("transcript-bottom")
+                                .accessibilityHidden(true)
                         }
                         .padding(.horizontal, 16)
                         .padding(.vertical, 18)
                     }
                     .coordinateSpace(name: "chat-transcript")
+                    .defaultScrollAnchor(.bottom)
                     .scrollDismissesKeyboard(.interactively)
                     .accessibilityIdentifier("chat.transcript")
                     .onScrollPhaseChange { _, phase in
@@ -305,17 +309,35 @@ struct ChatView: View {
 
     private func scrollToLatestContent(using proxy: ScrollViewProxy) {
         let pinsCurrentTurn = isWorking || pinsSubmittedTurn
-        let target = pinsCurrentTurn ? latestUserMessageID.map(rowID(for:)) : displayMessages.last.map { rowID(for: $0.id) }
+        let target = pinsCurrentTurn ? latestUserMessageID.map(rowID(for:)) : "transcript-bottom"
         guard let target else { return }
+        let isInitialPosition = !hasPositionedInitialTranscript
         Task { @MainActor in
-            await Task.yield()
-            try? await Task.sleep(for: .milliseconds(120))
-            withAnimation(.snappy) {
-                proxy.scrollTo(
-                    target,
-                    anchor: pinsCurrentTurn ? UnitPoint(x: 0.5, y: 0.34) : .bottom
-                )
+            // Large Markdown rows can finish layout after the first view pass.
+            // Position once without animation, then verify the same anchor
+            // after layout settles instead of exposing the transcript top.
+            for delay in isInitialPosition ? [0, 80, 240] : [80] {
+                if delay > 0 { try? await Task.sleep(for: .milliseconds(delay)) }
+                guard isFollowingLatest, !userHasScrolledTranscript else { return }
+                if isInitialPosition {
+                    var transaction = Transaction()
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) {
+                        proxy.scrollTo(
+                            target,
+                            anchor: pinsCurrentTurn ? UnitPoint(x: 0.5, y: 0.34) : .bottom
+                        )
+                    }
+                } else {
+                    withAnimation(.snappy) {
+                        proxy.scrollTo(
+                            target,
+                            anchor: pinsCurrentTurn ? UnitPoint(x: 0.5, y: 0.34) : .bottom
+                        )
+                    }
+                }
             }
+            hasPositionedInitialTranscript = true
         }
     }
 }
