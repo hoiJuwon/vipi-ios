@@ -20,26 +20,23 @@ physical_device_id() {
     | head -1
 }
 
-has_connected_iphone() {
-  xcrun devicectl list devices 2>/dev/null | grep -E 'connected[[:space:]]+iPhone' >/dev/null
-}
-
 cd "$ROOT"
 [ "$(git branch --show-current)" = "main" ] || { echo "Deploy only from main" >&2; exit 1; }
 [ -z "$(git status --porcelain)" ] || { echo "Local main is not clean" >&2; exit 1; }
 
 TARGET="local"
 TARGET_REPO="$ROOT"
-DEVICE=""
-if has_connected_iphone; then
-  DEVICE=$(physical_device_id "$ROOT")
-  [ -n "$DEVICE" ] || { echo "A local iPhone is connected but Xcode has no physical destination" >&2; exit 1; }
-  echo "Deploying through locally connected iPhone destination $DEVICE"
+DEVICE=$(physical_device_id "$ROOT")
+if [ -n "$DEVICE" ]; then
+  echo "Deploying through local iPhone destination $DEVICE"
 else
   TARGET="remote"
   echo "No physical iPhone on Mac Studio; checking MacBook Pro $REMOTE_HOST"
-  ssh -o BatchMode=yes "$REMOTE_HOST" "xcrun devicectl list devices 2>/dev/null | grep -E 'connected[[:space:]]+iPhone' >/dev/null" \
-    || { echo "No connected physical iPhone found on Mac Studio or MacBook Pro" >&2; exit 1; }
+  REMOTE_DEVICE=$(ssh -o BatchMode=yes "$REMOTE_HOST" "
+    xcodebuild -project '$REMOTE_REPO/Vipi.xcodeproj' -scheme Vipi -showdestinations 2>/dev/null \
+      | sed -n 's/.*platform:iOS, arch:[^,]*, id:\\([^,]*\\),.*/\\1/p' | head -1
+  ")
+  [ -n "$REMOTE_DEVICE" ] || { echo "No deployable physical iPhone found on Mac Studio or MacBook Pro" >&2; exit 1; }
 
   rm -f "$BUNDLE"
   git bundle create "$BUNDLE" main
@@ -51,11 +48,7 @@ else
     git fetch /tmp/vipi-main.bundle main
     git merge --ff-only FETCH_HEAD
   "
-  DEVICE=$(ssh -o BatchMode=yes "$REMOTE_HOST" "
-    xcodebuild -project '$REMOTE_REPO/Vipi.xcodeproj' -scheme Vipi -showdestinations 2>/dev/null \
-      | sed -n 's/.*platform:iOS, arch:[^,]*, id:\\([^,]*\\),.*/\\1/p' | head -1
-  ")
-  [ -n "$DEVICE" ] || { echo "MacBook sees the iPhone but Xcode has no physical destination" >&2; exit 1; }
+  DEVICE="$REMOTE_DEVICE"
   TARGET_REPO="$REMOTE_REPO"
 fi
 
