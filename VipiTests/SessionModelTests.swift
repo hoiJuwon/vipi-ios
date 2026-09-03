@@ -318,6 +318,14 @@ final class SessionModelTests: XCTestCase {
         await store.handle(failedHistory)
         XCTAssertNil(store.commandError)
 
+        store.registerHistoryRequestForTesting(id: "history-error", sessionID: "reconcile")
+        let historyError = try JSONDecoder().decode(
+            ServerEnvelope.self,
+            from: Data(#"{"id":"history-error","type":"error","payload":{"code":"RUNTIME_UPDATE_REQUIRED","sessionID":"reconcile"}}"#.utf8)
+        )
+        await store.handle(historyError)
+        XCTAssertNil(store.commandError)
+
         let reset = try JSONDecoder().decode(
             ServerEnvelope.self,
             from: Data(#"{"type":"sessions.snapshot","payload":{"sessions":[],"replayReset":true}}"#.utf8)

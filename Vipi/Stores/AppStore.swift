@@ -977,6 +977,7 @@ final class AppStore {
             }
             if let id = envelope.id, let request = pendingHistoryRequests.removeValue(forKey: id) {
                 historyRequestsInFlight.remove(request.sessionID)
+                return
             }
             if code == "SESSION_OFFLINE", case .string(let sessionID) = payload["sessionID"] {
                 if let index = sessions.firstIndex(where: { $0.id == sessionID }) {
