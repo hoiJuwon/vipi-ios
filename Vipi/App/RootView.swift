@@ -86,7 +86,11 @@ struct RootView: View {
         .animation(.snappy, value: store.pendingInteractions.first?.requestID)
         .onAppear { openNotificationSessionIfAvailable() }
         .onChange(of: store.notificationRouteRequest) { _, _ in openNotificationSessionIfAvailable() }
-        .onChange(of: store.sessions.map(\.id)) { _, _ in openNotificationSessionIfAvailable() }
+        .onChange(of: store.createdSessionRouteRequest) { _, _ in openCreatedSessionIfAvailable() }
+        .onChange(of: store.sessions.map(\.id)) { _, _ in
+            openNotificationSessionIfAvailable()
+            openCreatedSessionIfAvailable()
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { openNotificationSessionIfAvailable() }
         }
@@ -106,6 +110,17 @@ struct RootView: View {
             }
         }
         .tint(VipiTheme.accent)
+    }
+
+    private func openCreatedSessionIfAvailable() {
+        guard let sessionID = store.requestedCreatedSessionID,
+              let session = store.session(id: sessionID) else { return }
+        if session.agentProvider != store.selectedProvider {
+            store.selectProvider(session.agentProvider)
+        }
+        store.commandError = nil
+        path = [.session(sessionID)]
+        store.consumeCreatedSessionRequest()
     }
 
     private func openNotificationSessionIfAvailable() {

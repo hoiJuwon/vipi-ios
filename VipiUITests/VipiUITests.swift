@@ -69,7 +69,8 @@ final class VipiUITests: XCTestCase {
         create.tap()
 
         XCTAssertFalse(app.navigationBars["New Session"].waitForExistence(timeout: 2))
-        XCTAssertTrue(app.staticTexts["기타 / 새 세션"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["새 세션"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.textFields["chat.composer"].isHittable)
     }
 
     func testProviderSelectorSwitchesWithoutChangingPiSessions() {

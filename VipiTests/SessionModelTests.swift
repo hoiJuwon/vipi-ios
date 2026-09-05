@@ -74,6 +74,8 @@ final class SessionModelTests: XCTestCase {
         XCTAssertTrue(sessions.contains { $0.name == "기타 / 새 세션" && $0.cwd == "/Users/choijuwon/vipi-ios" })
         let succeeded = await store.sessionCreationSucceeded
         XCTAssertTrue(succeeded)
+        let createdSessionID = await store.requestedCreatedSessionID
+        XCTAssertEqual(createdSessionID, sessions.first(where: { $0.name == "기타 / 새 세션" })?.id)
     }
 
     @MainActor func testProviderSelectionFiltersSessionsWithoutMutatingPiState() {

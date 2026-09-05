@@ -37,6 +37,8 @@ final class AppStore {
     var pushRegistrationError: String?
     var requestedNotificationSessionID: String?
     var notificationRouteRequest = 0
+    var requestedCreatedSessionID: String?
+    var createdSessionRouteRequest = 0
 
     private let broker: BrokerClient
     private let allowsInsecureLocalhostForUITesting: Bool
@@ -114,6 +116,7 @@ final class AppStore {
         historyRequestsInFlight.insert(sessionID)
     }
     func messages(for id: String) -> [ChatMessage] { messagesBySession[id] ?? [] }
+    func consumeCreatedSessionRequest() { requestedCreatedSessionID = nil }
     func branches(for id: String) -> [BranchNode] { branchesBySession[id] ?? [] }
     func draft(for id: String) -> String { draftsBySession[id] ?? "" }
     func annotations(for id: String) -> [ChatAnnotation] { annotationsBySession[id] ?? [] }
@@ -466,8 +469,9 @@ final class AppStore {
 
         if connectionState == .demo {
             let now = Date.now
+            let sessionID = "demo-\(UUID().uuidString)"
             sessions.insert(RemoteSession(
-                id: "demo-\(UUID().uuidString)",
+                id: sessionID,
                 provider: selectedProvider,
                 name: "기타 / 새 세션",
                 cwd: path,
@@ -484,6 +488,7 @@ final class AppStore {
             isCreatingSession = false
             startingSessionPath = nil
             sessionCreationSucceeded = true
+            requestCreatedSessionNavigation(sessionID)
             return
         }
         guard connectionState == .connected else {
@@ -808,6 +813,7 @@ final class AppStore {
             startingSessionPaneID = result.paneID
             registeredWorkspaces = Array(Set(registeredWorkspaces + [path])).sorted()
             sessionCreationSucceeded = true
+            if let sessionID = result.sessionID { requestCreatedSessionNavigation(sessionID) }
             Task { [weak self] in
                 try? await Task.sleep(for: .seconds(25))
                 guard let self, self.startingSessionPaneID == result.paneID else { return }
@@ -816,6 +822,12 @@ final class AppStore {
                 self.commandError = "The new \(provider.displayName) session did not finish starting."
             }
         }
+    }
+
+    private func requestCreatedSessionNavigation(_ sessionID: String) {
+        guard requestedCreatedSessionID != sessionID else { return }
+        requestedCreatedSessionID = sessionID
+        createdSessionRouteRequest &+= 1
     }
 
     private func commandResponseError(_ payload: JSONValue) -> String {
@@ -901,9 +913,10 @@ final class AppStore {
                 let workingSessionIDs = Set(sessions.filter { $0.phase == .working }.map(\.id))
                 progressBySession = progressBySession.filter { workingSessionIDs.contains($0.key) }
                 if let paneID = startingSessionPaneID,
-                   sessions.contains(where: { $0.tmux.paneID == paneID }) {
+                   let createdSession = sessions.first(where: { $0.tmux.paneID == paneID }) {
                     startingSessionPath = nil
                     startingSessionPaneID = nil
+                    requestCreatedSessionNavigation(createdSession.id)
                 }
                 scheduleLocalCacheSave()
             } catch {
@@ -1057,6 +1070,7 @@ private struct SessionCreateCommandResponse: Decodable {
 private struct SessionCreateResult: Decodable {
     let cwd: String
     let paneID: String
+    let sessionID: String?
 }
 
 private struct PersistedMobileCache: Codable {
