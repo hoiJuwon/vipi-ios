@@ -183,12 +183,44 @@ async function tmuxSession(tmux: string): Promise<string | undefined> {
   }
 }
 
-function addPendingRegistryEntry(result: string, cwd: string): string {
-  const [tmuxSession, tmuxWindow, paneID, pidValue] = result.trim().split("\t");
-  const pid = Number(pidValue);
-  if (!tmuxSession || !tmuxWindow || !paneID?.startsWith("%") || !Number.isFinite(pid)) {
-    throw new Error("tmux did not return a valid Pi pane.");
+type PaneCoordinates = {
+  tmuxSession: string;
+  tmuxWindow: string;
+  paneID: string;
+  pid: number;
+};
+
+function parsePaneCoordinates(output: string): PaneCoordinates | undefined {
+  for (const line of output.trim().split("\n").reverse()) {
+    const [tmuxSession, tmuxWindow, paneID, pidValue] = line.trim().split("\t");
+    const pid = Number(pidValue);
+    if (tmuxSession && tmuxWindow && paneID?.startsWith("%") && Number.isFinite(pid) && pid > 0) {
+      return { tmuxSession, tmuxWindow, paneID, pid };
+    }
   }
+  return undefined;
+}
+
+async function resolvePaneCoordinates(tmux: string, creationOutput: string, fallbackTarget: string): Promise<PaneCoordinates> {
+  const direct = parsePaneCoordinates(creationOutput);
+  if (direct) return direct;
+
+  const reportedPaneID = creationOutput.match(/%\d+/u)?.[0];
+  const targets = [...new Set([reportedPaneID, fallbackTarget].filter((value): value is string => Boolean(value)))];
+  for (const target of targets) {
+    try {
+      const { stdout } = await execFileAsync(tmux, [
+        "list-panes", "-t", target, "-F", "#{session_name}\t#{window_index}\t#{pane_id}\t#{pane_pid}",
+      ], { timeout: 3_000 });
+      const coordinates = parsePaneCoordinates(stdout);
+      if (coordinates) return coordinates;
+    } catch {}
+  }
+  throw new Error("tmux created a window but its pane could not be identified.");
+}
+
+function addPendingRegistryEntry(coordinates: PaneCoordinates, cwd: string): string {
+  const { tmuxSession, tmuxWindow, paneID, pid } = coordinates;
   const body = readJSON(registryPath);
   const entries = Array.isArray(body.entries) ? body.entries.filter((value): value is RawRegistryEntry => Boolean(value && typeof value === "object")) : [];
   const now = new Date().toISOString();
@@ -220,31 +252,40 @@ export async function launchSession(requestedPath: unknown): Promise<SessionLaun
   const command = `while [ ! -f ${shellQuote(gate)} ]; do sleep 0.02; done; exec ${shellQuote(pi)} --tui-mode regular`;
   const session = await tmuxSession(tmux);
 
+  const windowName = `vipi-${randomUUID().slice(0, 8)}`;
   let stdout: string;
+  let fallbackTarget: string;
   if (session) {
     ({ stdout } = await execFileAsync(tmux, [
-      "new-window", "-d", "-P", "-F", "#S\t#I\t#{pane_id}\t#{pane_pid}",
-      "-t", `${session}:`, "-c", cwd, "-n", "pi-new", command,
+      "new-window", "-d", "-P", "-F", "#{session_name}\t#{window_index}\t#{pane_id}\t#{pane_pid}",
+      "-t", `${session}:`, "-c", cwd, "-n", windowName, command,
     ], { timeout: 8_000 }));
+    fallbackTarget = `${session}:${windowName}`;
   } else {
     const name = `vipi-${Date.now().toString(36)}`;
     ({ stdout } = await execFileAsync(tmux, [
-      "new-session", "-d", "-P", "-F", "#S\t#I\t#{pane_id}\t#{pane_pid}",
-      "-s", name, "-c", cwd, "-n", "pi-new", command,
+      "new-session", "-d", "-P", "-F", "#{session_name}\t#{window_index}\t#{pane_id}\t#{pane_pid}",
+      "-s", name, "-c", cwd, "-n", windowName, command,
     ], { timeout: 8_000 }));
+    fallbackTarget = name;
   }
 
+  let paneID: string | undefined;
   try {
+    const coordinates = await resolvePaneCoordinates(tmux, stdout, fallbackTarget);
+    paneID = coordinates.paneID;
     registerWorkspace(cwd);
-    const paneID = addPendingRegistryEntry(stdout, cwd);
+    addPendingRegistryEntry(coordinates, cwd);
     writeFileSync(gate, "ready\n", { mode: 0o600 });
     setTimeout(() => { try { unlinkSync(gate); } catch {} }, 5_000).unref();
     return { cwd, paneID };
   } catch (error) {
     try { unlinkSync(gate); } catch {}
-    const paneID = stdout.trim().split("\t")[2];
     if (paneID?.startsWith("%")) {
       try { await execFileAsync(tmux, ["kill-pane", "-t", paneID], { timeout: 3_000 }); } catch {}
+    } else {
+      const cleanupCommand = session ? "kill-window" : "kill-session";
+      try { await execFileAsync(tmux, [cleanupCommand, "-t", fallbackTarget], { timeout: 3_000 }); } catch {}
     }
     throw error;
   }

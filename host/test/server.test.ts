@@ -81,7 +81,7 @@ before(async () => {
   workspaceRoot = realpathSync(workspaceRoot);
   const fakeTmux = join(directory, "fake-tmux");
   const fakePi = join(directory, "fake-pi");
-  writeFileSync(fakeTmux, `#!/bin/sh\nif [ "$1" = "list-sessions" ]; then printf 'base\\t1\\t1\\n'; exit 0; fi\nif [ "$1" = "new-window" ]; then printf 'base\\t9\\t%%99\\t12345\\n'; exit 0; fi\nexit 1\n`);
+  writeFileSync(fakeTmux, `#!/bin/sh\nif [ "$1" = "list-sessions" ]; then printf 'base\\t1\\t1\\n'; exit 0; fi\nif [ "$1" = "new-window" ]; then printf 'created pane %%99\\n'; exit 0; fi\nif [ "$1" = "list-panes" ]; then printf 'base\\t9\\t%%99\\t12345\\n'; exit 0; fi\nexit 1\n`);
   writeFileSync(fakePi, "#!/bin/sh\nexit 0\n");
   chmodSync(fakeTmux, 0o700);
   chmodSync(fakePi, 0o700);
