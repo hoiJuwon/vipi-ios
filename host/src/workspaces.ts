@@ -164,14 +164,16 @@ function shellQuote(value: string): string {
   return `'${value.replace(/'/gu, `'"'"'`)}'`;
 }
 
+// Use printable separators: in the production launchd environment tmux
+// returns literal tabs as underscores, including in -P/-F output.
 async function tmuxSession(tmux: string): Promise<string | undefined> {
   if (process.env.VIPI_TMUX_SESSION) return process.env.VIPI_TMUX_SESSION;
   try {
     const { stdout } = await execFileAsync(tmux, [
-      "list-sessions", "-F", "#{session_name}\t#{session_attached}\t#{session_created}",
+      "list-sessions", "-F", "#{session_name}|#{session_attached}|#{session_created}",
     ], { timeout: 5_000 });
     const sessions = stdout.split("\n").flatMap((line): Array<{ name: string; attached: number; created: number }> => {
-      const [name, attachedValue, createdValue] = line.split("\t");
+      const [name, attachedValue, createdValue] = line.split("|");
       const attached = Number(attachedValue);
       const created = Number(createdValue);
       return name && Number.isFinite(attached) && Number.isFinite(created) ? [{ name, attached, created }] : [];
@@ -192,7 +194,7 @@ type PaneCoordinates = {
 
 function parsePaneCoordinates(output: string): PaneCoordinates | undefined {
   for (const line of output.trim().split("\n").reverse()) {
-    const [tmuxSession, tmuxWindow, paneID, pidValue] = line.trim().split("\t");
+    const [tmuxSession, tmuxWindow, paneID, pidValue] = line.trim().split("|");
     const pid = Number(pidValue);
     if (tmuxSession && tmuxWindow && paneID?.startsWith("%") && Number.isFinite(pid) && pid > 0) {
       return { tmuxSession, tmuxWindow, paneID, pid };
@@ -210,7 +212,7 @@ async function resolvePaneCoordinates(tmux: string, creationOutput: string, fall
   for (const target of targets) {
     try {
       const { stdout } = await execFileAsync(tmux, [
-        "list-panes", "-t", target, "-F", "#{session_name}\t#{window_index}\t#{pane_id}\t#{pane_pid}",
+        "list-panes", "-t", target, "-F", "#{session_name}|#{window_index}|#{pane_id}|#{pane_pid}",
       ], { timeout: 3_000 });
       const coordinates = parsePaneCoordinates(stdout);
       if (coordinates) return coordinates;
@@ -257,14 +259,14 @@ export async function launchSession(requestedPath: unknown): Promise<SessionLaun
   let fallbackTarget: string;
   if (session) {
     ({ stdout } = await execFileAsync(tmux, [
-      "new-window", "-d", "-P", "-F", "#{session_name}\t#{window_index}\t#{pane_id}\t#{pane_pid}",
+      "new-window", "-d", "-P", "-F", "#{session_name}|#{window_index}|#{pane_id}|#{pane_pid}",
       "-t", `${session}:`, "-c", cwd, "-n", windowName, command,
     ], { timeout: 8_000 }));
     fallbackTarget = `${session}:${windowName}`;
   } else {
     const name = `vipi-${Date.now().toString(36)}`;
     ({ stdout } = await execFileAsync(tmux, [
-      "new-session", "-d", "-P", "-F", "#{session_name}\t#{window_index}\t#{pane_id}\t#{pane_pid}",
+      "new-session", "-d", "-P", "-F", "#{session_name}|#{window_index}|#{pane_id}|#{pane_pid}",
       "-s", name, "-c", cwd, "-n", windowName, command,
     ], { timeout: 8_000 }));
     fallbackTarget = name;

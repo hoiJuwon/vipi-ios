@@ -79,8 +79,10 @@ export function readTmuxRegistry(): SessionRecord[] {
       // Scheduler/headless runs use synthetic `session:<id>` coordinates.
       // Mobile exposes only user-owned tmux panes and fetches their latest
       // state when the app connects; headless runs must never stream or push.
-      if (!entry.piSessionId || !entry.cwd || !entry.sessionFile || !entry.tmuxPaneId?.startsWith("%") || !existsSync(entry.sessionFile)) return [];
-      const recent = recentMessageSnapshot(entry.sessionFile);
+      if (!entry.piSessionId || !entry.cwd || !entry.sessionFile || !entry.tmuxPaneId?.startsWith("%")) return [];
+      // Pi allocates the session ID/path before writing the first prompt.
+      // An empty new session must remain visible so mobile can send that prompt.
+      const recent = existsSync(entry.sessionFile) ? recentMessageSnapshot(entry.sessionFile) : {};
       return [{
         id: entry.piSessionId,
         name: entry.name || "기타 / 이름 없는 세션",

@@ -81,7 +81,7 @@ before(async () => {
   workspaceRoot = realpathSync(workspaceRoot);
   const fakeTmux = join(directory, "fake-tmux");
   const fakePi = join(directory, "fake-pi");
-  writeFileSync(fakeTmux, `#!/bin/sh\nif [ "$1" = "list-sessions" ]; then printf 'base\\t1\\t1\\n'; exit 0; fi\nif [ "$1" = "new-window" ]; then printf 'created pane %%99\\n'; exit 0; fi\nif [ "$1" = "list-panes" ]; then printf 'base\\t9\\t%%99\\t12345\\n'; exit 0; fi\nexit 1\n`);
+  writeFileSync(fakeTmux, `#!/bin/sh\nif [ "$1" = "list-sessions" ]; then printf 'base|1|1\\n'; exit 0; fi\nif [ "$1" = "new-window" ]; then printf 'created pane %%99\\n'; exit 0; fi\nif [ "$1" = "list-panes" ]; then printf 'base|9|%%99|12345\\n'; exit 0; fi\nexit 1\n`);
   writeFileSync(fakePi, "#!/bin/sh\nexit 0\n");
   chmodSync(fakeTmux, 0o700);
   chmodSync(fakePi, 0o700);
@@ -473,6 +473,19 @@ test("uses the session tree as the exact visibility boundary and derives missing
   assert.deepEqual(visibleSnapshot.payload.sessions.map((session: { id: string }) => session.id), ["visible-session"]);
   assert.equal(visibleSnapshot.payload.sessions[0].lastMessagePreview, "preview answer");
   assert.equal(visibleSnapshot.payload.sessions[0].unread, true);
+
+  // A new Pi session has an ID/path but no JSONL until its first prompt.
+  const beforeFirstPrompt = JSON.parse(await readFile(registryPath, "utf8"));
+  beforeFirstPrompt.entries.push({
+    piSessionId: "new-empty-session", cwd: "/tmp/visible", tmuxPaneId: "%100",
+    tmuxSession: "visible", tmuxWindow: "2", sessionFile: join(directory, "not-yet-written.jsonl"),
+  });
+  writeFileSync(registryPath, JSON.stringify(beforeFirstPrompt));
+  const emptySessionSnapshot = await receiveType(mobile, "sessions.snapshot");
+  assert.ok(emptySessionSnapshot.payload.sessions.some((session: { id: string }) => session.id === "new-empty-session"));
+  beforeFirstPrompt.entries.pop();
+  writeFileSync(registryPath, JSON.stringify(beforeFirstPrompt));
+  await receiveType(mobile, "sessions.snapshot");
 
   send(mobile, "session.read", { sessionID: "visible-session" }, "visible-read");
   const readResponse = await receiveType(mobile, "session.response");
